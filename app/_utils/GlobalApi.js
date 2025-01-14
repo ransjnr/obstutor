@@ -120,7 +120,7 @@ const enrollToCourse = async (courseId, email) => {
   return result;
 };
 
-const checkUserEnrollToCourse = async (courseId, email) => {
+const checkUserEnrolledToCourse = async (courseId, email) => {
   const query =
     gql`
     query MyQuery {
@@ -147,5 +147,5 @@ export default {
   getSideBanner,
   getCourseById,
   enrollToCourse,
-  checkUserEnrollToCourse,
+  checkUserEnrolledToCourse,
 };

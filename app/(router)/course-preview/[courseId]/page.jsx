@@ -10,7 +10,7 @@ import { useUser } from "@clerk/nextjs";
 function CoursePreview({ params }) {
   const [unwrappedParams, setUnwrappedParams] = React.useState(null);
   const [courseInfo, setCourseInfo] = useState();
-  const user = useUser();
+  const {user} = useUser();
   const [isUserAlreadyEnrolled, setIsUserAlreadyEnrolled] = useState(false);
 
   React.useEffect(() => {
@@ -23,13 +23,15 @@ function CoursePreview({ params }) {
     unwrappedParams && getCourseInfoById();
   }, [unwrappedParams]);
 
+  useEffect(() => {
+    courseInfo && user && checkUserEnrolledToCourse();
+  }, [courseInfo, user]);
   /**
    * used to get course Info by Slug/ID Name
    */
   const getCourseInfoById = () => {
     GlobalApi.getCourseById(unwrappedParams?.courseId).then((res) => {
       setCourseInfo(res?.courseList);
-      res?.courseList && checkUserEnrolledToCourse();
     });
   };
 
@@ -38,10 +40,11 @@ function CoursePreview({ params }) {
    */
   const checkUserEnrolledToCourse = () => {
     GlobalApi.checkUserEnrolledToCourse(
-      courseInfo?.slug,
-      user?.primaryEmailAddress?.emailAddress
+      courseInfo.slug,
+      user.primaryEmailAddress.emailAddress
     ).then((res) => {
-      if (res?.userEnrollCourses?.id) {
+      if (res?.userEnrollCourses[0]?.id) {
+        console.log(res);
         setIsUserAlreadyEnrolled(true);
       }
     });

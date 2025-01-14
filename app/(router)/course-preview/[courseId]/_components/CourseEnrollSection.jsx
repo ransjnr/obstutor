@@ -3,14 +3,18 @@ import { Button } from "@/components/ui/button";
 import { useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import React from "react";
+import React, { useEffect } from "react";
 import { toast } from "sonner";
 
-function CourseEnrollSection({ courseInfo }) {
+function CourseEnrollSection({ courseInfo, isUserAlreadyEnrolled }) {
   const membership = false;
   const { user } = useUser();
 
   const router = useRouter();
+
+  useEffect(() => {
+    console.log("isUserAlreadyEnrolled", isUserAlreadyEnrolled);
+  }, []);
   //Enroll to the course
   const onEnrollCourse = () => {
     GlobalApi.enrollToCourse(
