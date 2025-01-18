@@ -25,7 +25,6 @@ function CourseEnrollSection({ courseInfo, isUserAlreadyEnrolled }) {
 
       if (res) {
         //Show Toast on successfull enroll
-
         toast("User Enrolled in the course successfully", {
           description: "User Enrolled in the course successfully",
         });
@@ -38,7 +37,7 @@ function CourseEnrollSection({ courseInfo, isUserAlreadyEnrolled }) {
     <div className="p-3 text-center rounded-sm bg-primary ">
       <h2 className="text-[22px] font-bold text-white">Enroll to the course</h2>
       {/* User has Membership and Already Login      */}
-      {user && (membership || courseInfo.free) ? (
+      {user && (membership || courseInfo.free) && !isUserAlreadyEnrolled ? (
         <div className="flex flex-col gap-3 mt-3">
           <h2 className="text-white font-light">
             Enroll Now to Start Learning and Building the project
@@ -62,16 +61,30 @@ function CourseEnrollSection({ courseInfo, isUserAlreadyEnrolled }) {
           </Link>
         </div>
       ) : (
-        <div className="flex flex-col gap-3 mt-3">
-          <h2 className="text-white font-light">
-            Buy Monthly Membership and Get Access to All Courses
-          </h2>
-          <Button className="bg-white text-primary hover:bg-white hover:text-primary">
-            Buy Membership Just GHS50.00
-          </Button>
-        </div>
+        !isUserAlreadyEnrolled && (
+          <div className="flex flex-col gap-3 mt-3">
+            <h2 className="text-white font-light">
+              Buy Monthly Membership and Get Access to All Courses
+            </h2>
+            <Button className="bg-white text-primary hover:bg-white hover:text-primary">
+              Buy Membership Just GHS50.00
+            </Button>
+          </div>
+        )
       )}
       {/*Above Section: User does not have Membership or not Singup/Login      */}
+      {isUserAlreadyEnrolled && (
+        <div className="flex flex-col gap-3 mt-3">
+          <h2 className="text-white font-light">
+            Continue to learn your project
+          </h2>
+          <Link href={"/watch-course/" + isUserAlreadyEnrolled}>
+            <Button className="bg-white text-primary hover:bg-white hover:text-primary">
+              Continue
+            </Button>
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

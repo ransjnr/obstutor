@@ -10,8 +10,8 @@ import { useUser } from "@clerk/nextjs";
 function CoursePreview({ params }) {
   const [unwrappedParams, setUnwrappedParams] = React.useState(null);
   const [courseInfo, setCourseInfo] = useState();
-  const {user} = useUser();
-  const [isUserAlreadyEnrolled, setIsUserAlreadyEnrolled] = useState(false);
+  const { user } = useUser();
+  const [isUserAlreadyEnrolled, setIsUserAlreadyEnrolled] = useState();
 
   React.useEffect(() => {
     Promise.resolve(params).then((resolvedParams) => {
@@ -45,7 +45,7 @@ function CoursePreview({ params }) {
     ).then((res) => {
       if (res?.userEnrollCourses[0]?.id) {
         console.log(res);
-        setIsUserAlreadyEnrolled(true);
+        setIsUserAlreadyEnrolled(res?.userEnrollCourses[0]?.id);
       }
     });
   };
@@ -65,7 +65,10 @@ function CoursePreview({ params }) {
             isUserAlreadyEnrolled={isUserAlreadyEnrolled}
           />
 
-          <CourseContentSection courseInfo={courseInfo} />
+          <CourseContentSection
+            courseInfo={courseInfo}
+            isUserAlreadyEnrolled={isUserAlreadyEnrolled}
+          />
         </div>
       </div>
     )
