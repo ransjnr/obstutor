@@ -30,33 +30,26 @@ function SideNav() {
       auth: true,
     },
     {
-      id: 2,
-      name: "Store",
-      icon: LayoutGrid,
-      path: "/store",
-      auth: true,
-    },
-    {
       id: 3,
       name: "Membership",
       icon: BadgeIcon,
       path: "/membership",
       auth: true,
     },
-    {
-      id: 4,
-      name: "Be Instructor",
-      icon: GraduationCap,
-      path: "/instructor",
-      auth: true,
-    },
-    {
-      id: 5,
-      name: "AI Assistant",
-      icon: HelpCircle,
-      path: "/ai",
-      auth: true,
-    },
+    // {
+    //   id: 4,
+    //   name: "Be Instructor",
+    //   icon: GraduationCap,
+    //   path: "/instructor",
+    //   auth: true,
+    // },
+    // {
+    //   id: 5,
+    //   name: "AI Assistant",
+    //   icon: HelpCircle,
+    //   path: "/ai",
+    //   auth: true,
+    // },
   ];
 
   const path = usePathname();

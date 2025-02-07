@@ -154,6 +154,12 @@ const getUserEnrolledCourseDetails = async (id, email) => {
         courseId
         id
         userEmail
+        completedChapter {
+          ... on CompletedChapter {
+            id
+            chapterId
+          }
+        }
         courseList {
           author
           banner {
@@ -183,6 +189,76 @@ const getUserEnrolledCourseDetails = async (id, email) => {
   const result = await request(MASTER_URL, query);
   return result;
 };
+
+const markChapterCompleted = async (enrollId, chapterId) => {
+  const query =
+    gql`
+    mutation MyMutation {
+      updateUserEnrollCourse(
+        data: {
+          completedChapter: {
+            create: { CompletedChapter: { data: { chapterId: "` +
+    chapterId +
+    `" } } }
+          }
+        }
+        where: { id: "` +
+    enrollId +
+    `" }
+      ){
+        id
+      }
+      publishUserEnrollCourse(where: { id: "` +
+    enrollId +
+    `" }) {
+        id
+      }
+    }
+  `;
+  const result = await request(MASTER_URL, query);
+  return result;
+};
+
+const getUserAllEnrolledCourseList = async (email) => {
+  const query =
+    gql`
+    query MyQuery {
+      userEnrollCourses(where: { userEmail: "` +
+    email +
+    `" }) {
+        completedChapter {
+          ... on CompletedChapter {
+            id
+            chapterId
+          }
+        }
+        courseId
+        courseList {
+          author
+          id
+          name
+          slug
+          totalChapters
+          free
+          demoUrl
+          description
+          chapter {
+            ... on Chapter {
+              id
+              name
+            }
+          }
+          banner {
+            url
+          }
+        }
+      }
+    }
+  `;
+  const result = await request(MASTER_URL, query);
+  return result;
+};
+
 export default {
   getAllCourseList,
   getSideBanner,
@@ -190,4 +266,6 @@ export default {
   enrollToCourse,
   checkUserEnrolledToCourse,
   getUserEnrolledCourseDetails,
+  markChapterCompleted,
+  getUserAllEnrolledCourseList,
 };
