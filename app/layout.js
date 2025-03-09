@@ -23,6 +23,20 @@ export default function RootLayout({ children }) {
             gtag("config", "G-FH8BPBFD4W");
           `}
           </Script>
+          <link rel="manifest" href="/manifest.json" />
+          <Script id="service-worker" strategy="afterInteractive">
+            {`
+              if ('serviceWorker' in navigator) {
+                window.addEventListener('load', function() {
+                  navigator.serviceWorker.register('/service-worker.js').then(function(registration) {
+                    console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                  }, function(err) {
+                    console.log('ServiceWorker registration failed: ', err);
+                  });
+                });
+              }
+            `}
+          </Script>
         </head>
         <body>
           {children}

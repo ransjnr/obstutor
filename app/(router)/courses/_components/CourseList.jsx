@@ -12,28 +12,57 @@ import Link from "next/link";
 
 function CourseList() {
   const [courseList, setCourseList] = useState([]);
+  const [filter, setFilter] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
+
   useEffect(() => {
-    getAllCourses();
-  }, []);
-  //Fetch Course List
-  const getAllCourses = () => {
+    const queryParams = new URLSearchParams(window.location.search);
+    const searchQuery = queryParams.get("search") || "";
+    getAllCourses(searchQuery);
+  }, [filter]);
+
+  const getAllCourses = (searchQuery = "") => {
     GlobalApi.getAllCourseList().then((resp) => {
-      setCourseList(resp?.courseLists);
+      let courses = resp?.courseLists || [];
+      if (searchQuery) {
+        courses = courses.filter((course) =>
+          course.name.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+      }
+      if (filter !== "all") {
+        courses = courses.filter((course) =>
+          filter === "free" ? course.free : !course.free
+        );
+      }
+      setCourseList(courses);
     });
   };
+
+  const handleFilterChange = (value) => {
+    setFilter(value);
+  };
+
+  const handleSearchChange = (e) => {
+    const query = e.target.value;
+    setSearchQuery(query);
+    if (!query.trim()) {
+      getAllCourses();
+    }
+  };
+
   return (
     <div className="p-5 bg-white rounded-lg mt-5">
       {/* Title and Filter */}
       <div className="flex items-center justify-between">
         <h2 className="text-[20px] font-bold text-primary">All Courses</h2>
-        <Select>
+        <Select onValueChange={handleFilterChange}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Filter" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="light">All</SelectItem>
-            <SelectItem value="dark">Paid</SelectItem>
-            <SelectItem value="system">Free</SelectItem>
+            <SelectItem value="all">All</SelectItem>
+            <SelectItem value="paid">Paid</SelectItem>
+            <SelectItem value="free">Free</SelectItem>
           </SelectContent>
         </Select>
       </div>

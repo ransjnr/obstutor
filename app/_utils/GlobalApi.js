@@ -190,7 +190,7 @@ const getUserEnrolledCourseDetails = async (id, email) => {
   return result;
 };
 
-const markChapterCompleted = async (enrollId, chapterId) => {
+export const markChapterCompleted = async (enrollId, chapterId) => {
   const query =
     gql`
     mutation MyMutation {
@@ -257,6 +257,24 @@ const getUserAllEnrolledCourseList = async (email) => {
   `;
   const result = await request(MASTER_URL, query);
   return result;
+};
+
+export const getNotifications = async () => {
+  // Mock API call to fetch notifications
+  return [
+    { id: 1, message: "New course available!" },
+    { id: 2, message: "Chapter completed!" },
+  ];
+};
+
+export const markNotificationAsRead = async (id) => {
+  // Mock API call to mark a notification as read
+  console.log(`Notification ${id} marked as read.`);
+};
+
+export const sendEmailNotification = async (email, message) => {
+  // Mock API call to send an email notification
+  console.log(`Email sent to ${email}: ${message}`);
 };
 
 export default {

@@ -6,12 +6,14 @@ import GlobalApi from "@/app/_utils/GlobalApi";
 import CourseEnrollSection from "./_components/CourseEnrollSection";
 import CourseContentSection from "./_components/CourseContentSection";
 import { useUser } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
 
 function CoursePreview({ params }) {
   const [unwrappedParams, setUnwrappedParams] = React.useState(null);
   const [courseInfo, setCourseInfo] = useState();
   const { user } = useUser();
   const [isUserAlreadyEnrolled, setIsUserAlreadyEnrolled] = useState();
+  const router = useRouter();
 
   React.useEffect(() => {
     Promise.resolve(params).then((resolvedParams) => {
@@ -60,6 +62,12 @@ function CoursePreview({ params }) {
 
         {/* Course Content */}
         <div>
+          <button
+            onClick={() => router.push("/dashboard")}
+            className="text-primary mb-4"
+          >
+            Back to Dashboard
+          </button>
           <CourseEnrollSection
             courseInfo={courseInfo}
             isUserAlreadyEnrolled={isUserAlreadyEnrolled}

@@ -11,7 +11,7 @@ function layout({ children }) {
         <SideNav />
       </div>
 
-      <div className="ml-64">
+      <div className="sm:ml-64">
         <Header />
 
         {children}

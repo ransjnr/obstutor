@@ -57,7 +57,7 @@ function SideNav() {
     console.log("Path", path);
   }, []);
   return (
-    <div className="p-5 bg-white shadow-sm border h-screen">
+    <div className="p-5 bg-white shadow-sm border h-screen sm:w-64">
       <Image src="/logo.svg" alt="logo" width={200} height={50} />
       <hr className="mt-3"></hr>
       <div className="mt-5">
