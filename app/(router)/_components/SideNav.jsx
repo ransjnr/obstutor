@@ -5,15 +5,19 @@ import {
   BookOpen,
   HelpCircle,
   LayoutGrid,
+  Brain,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 
-function SideNav() {
+function SideNav({ isCollapsed, onToggleCollapse }) {
   const { user } = useUser();
+  const [collapsed, setCollapsed] = useState(isCollapsed || false);
   const menu = [
     {
       id: 0,
@@ -36,6 +40,13 @@ function SideNav() {
       path: "/membership",
       auth: true,
     },
+    {
+      id: 4,
+      name: "Obstutor AI",
+      icon: Brain,
+      path: "/ai",
+      auth: true,
+    },
     // {
     //   id: 4,
     //   name: "Be Instructor",
@@ -43,22 +54,42 @@ function SideNav() {
     //   path: "/instructor",
     //   auth: true,
     // },
-    // {
-    //   id: 5,
-    //   name: "AI Assistant",
-    //   icon: HelpCircle,
-    //   path: "/ai",
-    //   auth: true,
-    // },
   ];
 
   const path = usePathname();
+
+  // Handle collapse toggle
+  const toggleCollapse = () => {
+    const newCollapsedState = !collapsed;
+    setCollapsed(newCollapsedState);
+    if (onToggleCollapse) {
+      onToggleCollapse(newCollapsedState);
+    }
+  };
+
   useEffect(() => {
-    console.log("Path", path);
-  }, []);
+    setCollapsed(isCollapsed || false);
+  }, [isCollapsed]);
+
   return (
-    <div className="p-5 bg-white shadow-sm border h-screen sm:w-64">
-      <Image src="/logo.svg" alt="logo" width={200} height={50} />
+    <div className="p-5 bg-white shadow-sm border h-screen sm:w-64 relative">
+      <div className="flex justify-between items-center">
+        <div className={collapsed ? "hidden" : "block"}>
+          <Image src="/logo.svg" alt="logo" width={200} height={50} />
+        </div>
+        <button
+          onClick={toggleCollapse}
+          className="p-1 rounded-full hover:bg-gray-100 absolute right-2 top-5"
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {collapsed ? (
+            <ChevronRight className="h-5 w-5 text-gray-500" />
+          ) : (
+            <ChevronLeft className="h-5 w-5 text-gray-500" />
+          )}
+        </button>
+      </div>
+
       <hr className="mt-3"></hr>
       <div className="mt-5">
         {menu.map(
@@ -71,7 +102,7 @@ function SideNav() {
                   }`}
                 >
                   <item.icon className="group-hover:animate-bounce" />
-                  <h2>{item.name}</h2>
+                  {!collapsed && <h2>{item.name}</h2>}
                 </div>
               </Link>
             )

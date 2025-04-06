@@ -1,7 +1,12 @@
-import { Toaster } from "@/components/ui/sonner";
+import { Toaster } from "@/components/ui/toaster";
 import "./globals.css";
 import { ClerkProvider } from "@clerk/nextjs";
 import Script from "next/script";
+
+export const metadata = {
+  title: "Obstutor",
+  description: "Learning Medical Course Made Easy",
+};
 
 export default function RootLayout({ children }) {
   return (
