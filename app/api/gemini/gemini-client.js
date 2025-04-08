@@ -87,6 +87,7 @@ export async function analyzeSlidesContent(content) {
     seemsEmpty: false,
     contentLength: content ? content.length : 0,
     contentType: "unknown",
+    topicHints: [],
   };
 
   try {
@@ -94,11 +95,35 @@ export async function analyzeSlidesContent(content) {
       // Detect content type
       if (
         content.includes("This appears to be a") &&
-        content.includes("file with limited text content")
+        (content.includes("file with limited text content") ||
+          content.includes("primarily images or scanned content"))
       ) {
         contentInfo.contentType = "limited-extraction";
         contentInfo.seemsEmpty = content.length < 300;
         console.log("Detected content with limited extraction");
+
+        // Try to extract subject hints from the content
+        const biomedicalMatch = content.match(/related to (.*?)\./i);
+        if (biomedicalMatch && biomedicalMatch[1]) {
+          contentInfo.topicHints.push(biomedicalMatch[1]);
+        }
+
+        // Look for PDF metadata that might have topics
+        if (content.includes("PDF Title:")) {
+          const titleMatch = content.match(/PDF Title: (.*?)(?:\n|$)/i);
+          if (titleMatch && titleMatch[1] && titleMatch[1] !== "Unknown") {
+            contentInfo.topicHints.push(titleMatch[1]);
+          }
+
+          const subjectMatch = content.match(/PDF Subject: (.*?)(?:\n|$)/i);
+          if (
+            subjectMatch &&
+            subjectMatch[1] &&
+            subjectMatch[1] !== "Unknown"
+          ) {
+            contentInfo.topicHints.push(subjectMatch[1]);
+          }
+        }
       } else if (content.includes("%PDF")) {
         contentInfo.contentType = "pdf";
       } else if (content.includes("<html") || content.includes("<body")) {
@@ -127,30 +152,110 @@ export async function analyzeSlidesContent(content) {
   // Adapt prompt based on content quality
   let enhancedPrompt = "";
 
+  // Check for topic keywords in content or hints
+  const topicKeywords = {
+    "biomedical imaging": [
+      "biomedical imaging",
+      "medical imaging",
+      "radiology",
+      "mri",
+      "ct scan",
+      "ultrasound",
+      "x-ray",
+    ],
+    anatomy: ["anatomy", "anatomical", "dissection", "cadaver"],
+    physiology: [
+      "physiology",
+      "physiological",
+      "homeostasis",
+      "system function",
+    ],
+    biochemistry: ["biochemistry", "biochemical", "metabolism", "enzyme"],
+    neuroscience: [
+      "neuroscience",
+      "neuron",
+      "brain",
+      "neural",
+      "nervous system",
+    ],
+    pharmacology: [
+      "pharmacology",
+      "drug",
+      "medication",
+      "therapeutic",
+      "dosage",
+    ],
+    microbiology: ["microbiology", "bacteria", "virus", "pathogen", "microbe"],
+    pathology: ["pathology", "disease", "disorder", "condition", "syndrome"],
+    genetics: ["genetics", "gene", "dna", "chromosome", "mutation"],
+    immunology: ["immunology", "immune", "antibody", "antigen", "lymphocyte"],
+    histology: ["histology", "tissue", "microscopic", "cell structure"],
+    embryology: ["embryology", "embryo", "fetus", "development", "congenital"],
+    psychology: ["psychology", "behavior", "mental", "cognitive", "disorder"],
+    chemistry: ["chemistry", "chemical", "compound", "reaction", "molecular"],
+    physics: ["physics", "force", "energy", "motion", "quantum"],
+    biology: ["biology", "biological", "organism", "evolution", "ecology"],
+  };
+
+  let detectedTopics = [];
+  const cleanedContentLower = cleanedContent.toLowerCase();
+
+  // Detect topics from content
+  Object.entries(topicKeywords).forEach(([topic, keywords]) => {
+    if (keywords.some((keyword) => cleanedContentLower.includes(keyword))) {
+      detectedTopics.push(topic);
+    }
+
+    // Also check topic hints
+    if (contentInfo.topicHints && contentInfo.topicHints.length > 0) {
+      const hintsLower = contentInfo.topicHints.map((hint) =>
+        hint.toLowerCase()
+      );
+      if (
+        keywords.some((keyword) =>
+          hintsLower.some((hint) => hint.includes(keyword))
+        )
+      ) {
+        if (!detectedTopics.includes(topic)) {
+          detectedTopics.push(topic);
+        }
+      }
+    }
+  });
+
+  // Get the primary topic (if any)
+  const primaryTopic = detectedTopics.length > 0 ? detectedTopics[0] : "";
+
+  // Update the prompt generation to use the detected topics
   if (contentInfo.seemsEmpty || cleanedContent.length < 200) {
     // Special prompt for documents with very limited text
-    enhancedPrompt = `You are an expert medical/biology tutor creating comprehensive study notes. The student submitted a document that appears to contain limited textual content (possibly containing images, charts, or diagrams that couldn't be extracted).
+    enhancedPrompt = `You are an expert academic tutor creating comprehensive study notes. The student submitted a document that appears to contain limited textual content (possibly containing images, charts, or diagrams that couldn't be extracted).
 
 From the file information and any available text: 
 ---
 ${cleanedContent.substring(0, 5000)}
 ---
 
-Please:
-1. Acknowledge that the document appears to have limited text content
-2. Create comprehensive study notes on the likely topics based on any context clues in the filename or available text
-3. Focus on creating USEFUL study materials covering fundamental biology/medical topics that would typically be in such course materials
-4. Include a disclaimer that these notes are generated based on limited information
-5. Follow all the formatting instructions for well-structured notes below
+${
+  detectedTopics.length > 0
+    ? `This document appears to be related to ${detectedTopics.join(
+        ", "
+      )}. Create comprehensive notes on these topics covering key concepts, principles, mechanisms, and applications.`
+    : `Please:
+1. Analyze any context clues from the filename or available text to determine the likely subject matter
+2. Create comprehensive study notes on the likely topics based on these context clues
+3. Focus on creating USEFUL study materials covering fundamental concepts that would typically be in such course materials
+4. Include a disclaimer that these notes are generated based on limited information`
+}
 
 The notes should:
-- Cover core biological/medical concepts likely relevant to the student's course
+- Cover core concepts likely relevant to the student's course
 - Be organized with clear headings and a logical structure
-- Include key definitions, mechanisms, and clinical relevance
+- Include key definitions, mechanisms, and applications
 - Use formatting (bold, bullet points) to aid study`;
   } else {
     // Standard prompt for documents with sufficient text
-    enhancedPrompt = `You are an expert medical/biology tutor creating comprehensive study notes from a student's lecture slides or course material. The student is preparing for exams and needs well-structured, clear summaries to aid their revision.
+    enhancedPrompt = `You are an expert academic tutor creating comprehensive study notes from a student's lecture slides or course material. The student is preparing for exams and needs well-structured, clear summaries to aid their revision.
 
 Given the following content which may be from a presentation, document, or study material:
 ---
@@ -159,7 +264,17 @@ ${cleanedContent.substring(0, 15000)} ${
     }
 ---
 
-Instructions:
+${
+  detectedTopics.length > 0
+    ? `Since this content relates to ${detectedTopics.join(
+        ", "
+      )}, please organize your notes to cover:
+1. Fundamental principles and core concepts
+2. Key mechanisms, processes, or methods
+3. Important applications or significance
+4. Related topics and connections to other fields
+5. Any controversies, limitations, or current developments in the field`
+    : `Instructions:
 1. Create a comprehensive set of study notes organized by main topics and subtopics
 2. Extract and highlight KEY FACTS, DEFINITIONS, and CONCEPTS that would likely appear in an exam
 3. Use a clear, hierarchical structure with numbered sections and subsections
@@ -167,8 +282,10 @@ Instructions:
    - Mechanisms and processes
    - Cause-effect relationships
    - Classifications and categories
-   - Clinical correlations or applications
-   - Diagrams/figures mentioned (describe them clearly)
+   - Applications or real-world significance
+   - Diagrams/figures mentioned (describe them clearly)`
+}
+
 5. Format your response in a way that's easy to read and memorize:
    - Use bullet points for lists
    - Bold important terms and definitions
@@ -213,6 +330,8 @@ export async function generateQuizFromSlides(content) {
   let contentInfo = {
     limitedText: false,
     fileType: "",
+    contentType: "",
+    topicHints: [],
   };
 
   try {
@@ -220,7 +339,8 @@ export async function generateQuizFromSlides(content) {
       // Check if this is content with limited extraction
       if (
         content.includes("This appears to be a") &&
-        content.includes("file with limited text content")
+        (content.includes("file with limited text content") ||
+          content.includes("primarily images or scanned content"))
       ) {
         contentInfo.limitedText = true;
         // Try to extract file type from the content
@@ -233,6 +353,29 @@ export async function generateQuizFromSlides(content) {
             contentInfo.fileType || "unknown"
           }`
         );
+
+        // Try to extract subject hints from the content
+        const biomedicalMatch = content.match(/related to (.*?)\./i);
+        if (biomedicalMatch && biomedicalMatch[1]) {
+          contentInfo.topicHints.push(biomedicalMatch[1]);
+        }
+
+        // Look for PDF metadata that might have topics
+        if (content.includes("PDF Title:")) {
+          const titleMatch = content.match(/PDF Title: (.*?)(?:\n|$)/i);
+          if (titleMatch && titleMatch[1] && titleMatch[1] !== "Unknown") {
+            contentInfo.topicHints.push(titleMatch[1]);
+          }
+
+          const subjectMatch = content.match(/PDF Subject: (.*?)(?:\n|$)/i);
+          if (
+            subjectMatch &&
+            subjectMatch[1] &&
+            subjectMatch[1] !== "Unknown"
+          ) {
+            contentInfo.topicHints.push(subjectMatch[1]);
+          }
+        }
       }
 
       // Enhanced cleaning that better handles PDFs and other document formats
@@ -247,23 +390,119 @@ export async function generateQuizFromSlides(content) {
     cleanedContent = content ? content.toString().substring(0, 10000) : "";
   }
 
+  // Check for topic keywords in content or hints
+  const topicKeywords = {
+    "biomedical imaging": [
+      "biomedical imaging",
+      "medical imaging",
+      "radiology",
+      "mri",
+      "ct scan",
+      "ultrasound",
+      "x-ray",
+    ],
+    anatomy: ["anatomy", "anatomical", "dissection", "cadaver"],
+    physiology: [
+      "physiology",
+      "physiological",
+      "homeostasis",
+      "system function",
+    ],
+    biochemistry: ["biochemistry", "biochemical", "metabolism", "enzyme"],
+    neuroscience: [
+      "neuroscience",
+      "neuron",
+      "brain",
+      "neural",
+      "nervous system",
+    ],
+    pharmacology: [
+      "pharmacology",
+      "drug",
+      "medication",
+      "therapeutic",
+      "dosage",
+    ],
+    microbiology: ["microbiology", "bacteria", "virus", "pathogen", "microbe"],
+    pathology: ["pathology", "disease", "disorder", "condition", "syndrome"],
+    genetics: ["genetics", "gene", "dna", "chromosome", "mutation"],
+    immunology: ["immunology", "immune", "antibody", "antigen", "lymphocyte"],
+    histology: ["histology", "tissue", "microscopic", "cell structure"],
+    embryology: ["embryology", "embryo", "fetus", "development", "congenital"],
+    psychology: ["psychology", "behavior", "mental", "cognitive", "disorder"],
+    chemistry: ["chemistry", "chemical", "compound", "reaction", "molecular"],
+    physics: ["physics", "force", "energy", "motion", "quantum"],
+    biology: ["biology", "biological", "organism", "evolution", "ecology"],
+  };
+
+  let detectedTopics = [];
+  const cleanedContentLower = cleanedContent.toLowerCase();
+
+  // Detect topics from content
+  Object.entries(topicKeywords).forEach(([topic, keywords]) => {
+    if (keywords.some((keyword) => cleanedContentLower.includes(keyword))) {
+      detectedTopics.push(topic);
+    }
+
+    // Also check topic hints
+    if (contentInfo.topicHints && contentInfo.topicHints.length > 0) {
+      const hintsLower = contentInfo.topicHints.map((hint) =>
+        hint.toLowerCase()
+      );
+      if (
+        keywords.some((keyword) =>
+          hintsLower.some((hint) => hint.includes(keyword))
+        )
+      ) {
+        if (!detectedTopics.includes(topic)) {
+          detectedTopics.push(topic);
+        }
+      }
+    }
+  });
+
+  // Get the primary topic (if any)
+  const primaryTopic = detectedTopics.length > 0 ? detectedTopics[0] : "";
+
   // Choose the appropriate prompt based on content quality
   let finalPrompt = "";
 
   if (contentInfo.limitedText || cleanedContent.length < 200) {
-    // Prompt for limited content - generate general biology/medical questions
-    finalPrompt = `You are an experienced medical school exam writer creating high-quality multiple-choice questions (MCQs) based on a document that has limited extractable text. The document appears to be related to biology or medical education.
+    // Prompt for limited content with specific biomedical imaging focus if detected
+    finalPrompt = `You are an experienced medical school exam writer creating high-quality multiple-choice questions (MCQs) based on a document that has limited extractable text. ${
+      detectedTopics.length > 0
+        ? `This document appears to be related to ${detectedTopics.join(", ")}.`
+        : "The document appears to be related to biology or medical education."
+    }
 
 From the limited context available:
 ---
 ${cleanedContent.substring(0, 5000)}
 ---
 
-Create 8 relevant multiple-choice questions covering fundamental biology/medical topics that would typically be covered in university-level courses. Since we don't have much content from the document itself, focus on core concepts in biology and medicine that would be valuable for a student's exam preparation.
+Create 8 relevant multiple-choice questions ${
+      detectedTopics.length > 0
+        ? `covering fundamental concepts in ${detectedTopics.join(
+            ", "
+          )}, including different imaging modalities (MRI, CT, Ultrasound, X-ray, PET), image acquisition physics, clinical applications, and image interpretation principles.`
+        : "covering fundamental biology/medical topics that would typically be covered in university-level courses."
+    }
+
+${
+  detectedTopics.length > 0
+    ? `Your questions should focus on:
+1. Physics principles behind medical imaging technologies
+2. Appropriate choice of imaging modality for specific clinical scenarios
+3. Image acquisition parameters and their effects on image quality
+4. Interpretation of various medical images and identification of anatomical structures
+5. Artifacts and limitations of different imaging techniques
+6. Safety considerations and contraindications in medical imaging`
+    : `Since we don't have much content from the document itself, focus on core concepts in biology and medicine that would be valuable for a student's exam preparation.`
+}
 
 The questions should:
 1. Cover various cognitive levels (recall, comprehension, application, analysis)
-2. Address fundamental biological/medical concepts likely to appear in any course
+2. Address fundamental concepts likely to appear in any course
 3. Include a mix of difficulty levels (easy, medium, hard)
 4. Be scientifically accurate and educational
 
@@ -278,12 +517,29 @@ Each question must include:
     // Standard prompt for normal content
     finalPrompt = `You are an experienced medical school exam writer creating high-quality multiple-choice questions (MCQs) based on lecture slides or course materials. Create questions that test understanding, application, and analysis - not just memorization.
 
-Given the following content from biomedical/biology course material:
+Given the following content from ${
+      detectedTopics.length > 0
+        ? `${detectedTopics.join(", ")} course material:`
+        : "biomedical/biology"
+    }
 ---
 ${cleanedContent.substring(0, 15000)} ${
       cleanedContent.length > 15000 ? "... [content truncated]" : ""
     }
 ---
+
+${
+  detectedTopics.length > 0
+    ? `Since this content relates to ${detectedTopics.join(
+        ", "
+      )}, create questions that specifically test:
+1. Understanding of fundamental principles and theories
+2. Knowledge of key mechanisms and processes
+3. Application of concepts to real-world scenarios
+4. Analysis and interpretation of relevant data or situations
+5. Understanding of important relationships and connections between concepts`
+    : ""
+}
 
 Create 8 exam-style multiple-choice questions that:
 
@@ -326,10 +582,26 @@ Return ONLY a properly formatted JSON array with these fields for each question.
 Example format:
 [
   {
-    "question": "Which of the following best describes the function of mitochondria in eukaryotic cells?",
-    "options": ["A. Protein synthesis", "B. Energy production through cellular respiration", "C. Lipid metabolism", "D. DNA replication", "E. Intracellular digestion"],
-    "answer": "B. Energy production through cellular respiration",
-    "explanation": "Mitochondria are the primary site of ATP production through oxidative phosphorylation. Option A is incorrect as protein synthesis occurs primarily in ribosomes. Option C is partially correct as some lipid metabolism occurs in mitochondria, but this is not their primary function. Option D is incorrect as DNA replication occurs in the nucleus. Option E is incorrect as intracellular digestion is performed by lysosomes.",
+    "question": "${
+      detectedTopics.length > 0
+        ? "Which imaging modality is most appropriate for evaluating soft tissue injuries without radiation exposure?"
+        : "Which of the following best describes the function of mitochondria in eukaryotic cells?"
+    }",
+    "options": [${
+      detectedTopics.length > 0
+        ? '"A. Computed Tomography (CT)", "B. Magnetic Resonance Imaging (MRI)", "C. X-ray", "D. Positron Emission Tomography (PET)", "E. Angiography"'
+        : '"A. Protein synthesis", "B. Energy production through cellular respiration", "C. Lipid metabolism", "D. DNA replication", "E. Intracellular digestion"'
+    }],
+    "answer": "${
+      detectedTopics.length > 0
+        ? "B. Magnetic Resonance Imaging (MRI)"
+        : "B. Energy production through cellular respiration"
+    }",
+    "explanation": "${
+      detectedTopics.length > 0
+        ? "MRI is the most appropriate imaging modality for evaluating soft tissue injuries without radiation exposure. It provides excellent soft tissue contrast and can detect subtle abnormalities in muscles, ligaments, tendons, and cartilage. Option A (CT) uses ionizing radiation and has less soft tissue contrast than MRI. Option C (X-ray) uses radiation and is best for bone imaging, not soft tissues. Option D (PET) involves radioactive tracers and is not typically used for musculoskeletal injuries. Option E (Angiography) is used to evaluate blood vessels, not soft tissue injuries."
+        : "Mitochondria are the primary site of ATP production through oxidative phosphorylation. Option A is incorrect as protein synthesis occurs primarily in ribosomes. Option C is partially correct as some lipid metabolism occurs in mitochondria, but this is not their primary function. Option D is incorrect as DNA replication occurs in the nucleus. Option E is incorrect as intracellular digestion is performed by lysosomes."
+    }",
     "type": "multiple-choice",
     "difficulty": "easy"
   }

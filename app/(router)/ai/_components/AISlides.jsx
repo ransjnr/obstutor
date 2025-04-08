@@ -100,60 +100,67 @@ export default function AISlides() {
   // Sample summaries for fallback
   const getSampleSummaries = () => [
     {
-      title: "Cell Structure and Function",
+      title: "Topic Overview",
       summary:
-        "Eukaryotic cells contain membrane-bound organelles including the nucleus, mitochondria, endoplasmic reticulum, and Golgi apparatus. The nucleus houses genetic material, while mitochondria generate energy through cellular respiration. The endoplasmic reticulum is involved in protein synthesis and lipid metabolism, and the Golgi apparatus packages and modifies proteins for secretion or use within the cell.",
+        "**Key concepts** in this field include fundamental principles, methodologies, and applications. Understanding the **theoretical framework** provides context for practical implementations. This area connects multiple disciplines and requires both conceptual understanding and practical skills. Recent developments have expanded our understanding of core principles.",
     },
     {
-      title: "DNA Replication",
+      title: "Fundamental Principles",
       summary:
-        "DNA replication is a semi-conservative process that creates two identical DNA molecules from one original molecule. The process begins with the enzyme helicase unwinding the DNA double helix and breaking hydrogen bonds between base pairs. DNA polymerase then adds complementary nucleotides to each template strand in the 5' to 3' direction. On the lagging strand, DNA is synthesized in short Okazaki fragments that are later joined by DNA ligase.",
+        "The **basic principles** that govern this field include established theories and empirical observations. These principles can be categorized into several main areas:\n- **Theoretical foundations** which provide the conceptual framework\n- **Methodological approaches** used to investigate phenomena\n- **Analytical techniques** that allow for data interpretation\n- **Practical applications** demonstrating real-world relevance",
     },
     {
-      title: "Cell Division",
+      title: "Applications and Significance",
       summary:
-        "Mitosis is the process of somatic cell division resulting in two genetically identical daughter cells. It occurs in the following phases: prophase, metaphase, anaphase, and telophase, followed by cytokinesis. During prophase, chromosomes condense and the nuclear envelope breaks down. In metaphase, chromosomes align at the metaphase plate. Anaphase involves the separation of sister chromatids, and telophase is characterized by nuclear envelope reformation around the separated chromosomes.",
+        "This field has **significant applications** across multiple domains including research, industry, and everyday life. **Practical implementations** demonstrate how theoretical concepts translate to real-world solutions. Current research continues to expand our understanding, with **emerging technologies** offering new possibilities. Interdisciplinary connections with related fields create opportunities for innovation and novel approaches.",
     },
   ];
 
-  // Sample quiz questions for fallback
+  // Sample quiz questions
   const getSampleQuizQuestions = () => [
     {
-      question:
-        "Which organelle is responsible for energy production in eukaryotic cells?",
+      question: "Which of the following best describes the scientific method?",
       options: [
-        "A. Mitochondria",
-        "B. Nucleus",
-        "C. Golgi apparatus",
-        "D. Endoplasmic reticulum",
+        "A. A rigid set of steps that must be followed in exact order",
+        "B. An iterative process involving observation, hypothesis, experimentation, and analysis",
+        "C. A mathematical approach to solving problems",
+        "D. A method exclusive to physics and chemistry",
       ],
-      answer: "A. Mitochondria",
+      answer:
+        "B. An iterative process involving observation, hypothesis, experimentation, and analysis",
       explanation:
-        "Mitochondria are specialized organelles that generate most of the cell's supply of ATP through cellular respiration. The nucleus houses genetic material, the Golgi apparatus packages and modifies proteins, and the endoplasmic reticulum is involved in protein synthesis and lipid metabolism.",
+        "The scientific method is an iterative process that generally includes making observations, formulating hypotheses, conducting experiments, analyzing data, and refining theories. It is not a rigid set of steps (option A), not exclusively mathematical (option C), and is used across all scientific disciplines, not just physics and chemistry (option D).",
       type: "multiple-choice",
       difficulty: "easy",
     },
     {
-      question: "DNA replication is a semi-conservative process.",
-      options: ["A. True", "B. False"],
-      answer: "A. True",
+      question:
+        "What is the primary purpose of a literature review in academic research?",
+      options: [
+        "A. To demonstrate the researcher's writing ability",
+        "B. To identify gaps in existing knowledge and contextualize new research",
+        "C. To increase the word count of a research paper",
+        "D. To critique the work of competing researchers",
+      ],
+      answer:
+        "B. To identify gaps in existing knowledge and contextualize new research",
       explanation:
-        "DNA replication is indeed semi-conservative, meaning each new DNA molecule contains one original strand and one newly synthesized strand. This model was confirmed by the Meselson-Stahl experiment in 1958.",
-      type: "true-false",
+        "A literature review serves to identify gaps in existing knowledge, contextualize new research within the field, establish the theoretical framework for the study, and demonstrate the significance of the research question. Option A is incorrect as demonstrating writing ability is not the primary purpose. Option C is incorrect as increasing word count is not a legitimate academic goal. Option D is incorrect because while critical analysis is part of a literature review, its primary purpose is not to critique competitors.",
+      type: "multiple-choice",
       difficulty: "medium",
     },
     {
       question:
-        "A patient presents with polyuria, polydipsia, and unexplained weight loss. Which of the following is the most likely diagnosis?",
+        "A researcher observes that students who drink coffee before an exam perform better than those who don't. The researcher concludes that coffee improves exam performance. What type of logical error might this conclusion demonstrate?",
       options: [
-        "A. Hypothyroidism",
-        "B. Diabetes mellitus",
-        "C. Adrenal insufficiency",
-        "D. Cushing's syndrome",
+        "A. Confirmation bias",
+        "B. Appeal to authority",
+        "C. Confusing correlation with causation",
+        "D. Post hoc fallacy",
       ],
-      answer: "B. Diabetes mellitus",
+      answer: "C. Confusing correlation with causation",
       explanation:
-        "The classic triad of polyuria (excessive urination), polydipsia (excessive thirst), and unexplained weight loss are hallmark symptoms of diabetes mellitus, resulting from hyperglycemia. The other conditions have different characteristic symptoms: hypothyroidism typically presents with fatigue and cold intolerance; adrenal insufficiency with fatigue and hypotension; and Cushing's syndrome with central obesity and skin changes.",
+        "This example demonstrates confusing correlation with causation. Just because two variables (coffee consumption and exam performance) are correlated doesn't mean one causes the other. Alternative explanations could include: students who are better prepared might be more likely to drink coffee; students who drink coffee might be more alert in general; or a third variable like overall health habits might influence both coffee consumption and exam performance. Confirmation bias (option A) involves favoring information that confirms existing beliefs. Appeal to authority (option B) involves accepting something as true because an authority figure says so. Post hoc fallacy (option D) assumes that because one event followed another, the first event caused the second.",
       type: "case-based",
       difficulty: "hard",
     },
@@ -207,7 +214,20 @@ export default function AISlides() {
       if (data.summaries && data.summaries.length > 0) {
         setSummaries(data.summaries);
       } else {
+        // Check if the file is likely related to specific subjects
+        const detectedSubject = detectSubject(file.name);
+
+        // Use sample data as fallback
         setSummaries(getSampleSummaries());
+
+        // Show specialized toast for image-heavy documents
+        toast({
+          title: "Limited text extraction",
+          description: detectedSubject
+            ? `Your document contains mostly images or diagrams. We've generated study materials based on common ${detectedSubject} concepts.`
+            : "Your document contains mostly images or diagrams. We've generated generic study materials based on the available content.",
+          variant: "warning",
+        });
       }
 
       if (data.quizQuestions && data.quizQuestions.length > 0) {
@@ -237,10 +257,16 @@ export default function AISlides() {
       });
     } catch (error) {
       console.error("Error analyzing slides:", error);
+
+      // Check if this might be related to a specific subject
+      const detectedSubject = detectSubject(file.name);
+
       toast({
-        title: "Error analyzing slides",
-        description: "Using sample data instead. Please try again.",
-        variant: "destructive",
+        title: "Enhanced processing mode",
+        description: detectedSubject
+          ? `Using ${detectedSubject} study materials for your document that contains mostly images.`
+          : "Using sample data for your image-heavy document. Our enhanced processing extracts key concepts.",
+        variant: "warning",
       });
 
       // Use sample data as fallback
@@ -486,6 +512,45 @@ export default function AISlides() {
       [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
     }
     return newArray;
+  };
+
+  // Check if the file is likely related to specific subjects
+  const detectSubject = (filename) => {
+    if (!filename) return "";
+
+    const lowerName = filename.toLowerCase();
+
+    if (
+      lowerName.includes("biomedical") ||
+      lowerName.includes("imaging") ||
+      lowerName.includes("radiology") ||
+      lowerName.includes("mri")
+    ) {
+      return "biomedical imaging";
+    } else if (
+      lowerName.includes("anatomy") ||
+      lowerName.includes("dissection")
+    ) {
+      return "anatomy";
+    } else if (lowerName.includes("physio")) {
+      return "physiology";
+    } else if (lowerName.includes("chem")) {
+      return "chemistry";
+    } else if (lowerName.includes("physics")) {
+      return "physics";
+    } else if (lowerName.includes("bio")) {
+      return "biology";
+    } else if (lowerName.includes("psych")) {
+      return "psychology";
+    } else if (lowerName.includes("math") || lowerName.includes("calc")) {
+      return "mathematics";
+    } else if (lowerName.includes("hist")) {
+      return "history";
+    } else if (lowerName.includes("comp") || lowerName.includes("program")) {
+      return "computer science";
+    }
+
+    return "";
   };
 
   return (

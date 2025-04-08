@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { analyzeSlidesContent, generateQuizFromSlides } from "../gemini-client";
+import pdfParse from "pdf-parse";
 
 export async function POST(req) {
   try {
@@ -53,39 +54,77 @@ export async function POST(req) {
         );
       }
 
-      // For PDFs and other complex document types
-      content = await file.text();
+      // Handle PDF files specifically
+      if (
+        fileInfo.type.includes("pdf") ||
+        fileInfo.name.toLowerCase().endsWith(".pdf") ||
+        (await file.slice(0, 5).text()).includes("%PDF")
+      ) {
+        console.log("PDF file detected, using pdf-parse for extraction");
 
-      // Detect if the content appears to be binary
-      const isBinary =
-        content &&
-        (content.includes("%PDF") ||
-          /[\x00-\x1F\x80-\xFF]/.test(content.substring(0, 500)) ||
-          content.includes("PK")); // ZIP files and office documents
+        // For PDF files, use pdf-parse
+        const buffer = await file.arrayBuffer();
+        try {
+          const pdfData = await pdfParse(Buffer.from(buffer));
+          content = pdfData.text || "";
 
-      if (isBinary) {
-        console.log(
-          `Binary content detected in ${fileInfo.name}. Using enhanced extraction.`
-        );
+          // If we have metadata, add it for context
+          if (pdfData.info) {
+            content =
+              `PDF Title: ${pdfData.info.Title || "Unknown"}\n` +
+              `PDF Author: ${pdfData.info.Author || "Unknown"}\n` +
+              `PDF Subject: ${pdfData.info.Subject || "Unknown"}\n` +
+              `Total Pages: ${pdfData.numpages}\n\n` +
+              content;
+          }
 
-        // For binary content, extract as much text as possible
-        // Remove control characters but preserve spacing and structure
-        content = content
-          .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, " ") // Remove control chars
-          .replace(/\\n/g, "\n")
-          .replace(/\\r/g, "\r") // Preserve line breaks
-          .replace(/\\t/g, "\t") // Preserve tabs
-          .replace(/\\\\/g, "\\")
-          .replace(/\\"/g, '"') // Unescape
-          .replace(/([^\x20-\x7E\n\r\t])/g, " "); // Replace other non-printable chars
+          console.log(`Extracted ${content.length} characters from PDF`);
 
-        if (content.length < 500) {
-          // If we couldn't extract much text, add special instructions
-          content = `This appears to be a ${
-            fileInfo.type || fileInfo.name
-          } file with limited text content that can be extracted directly. 
-          The document may contain images, charts, or formatted text that is not easily extractable as plain text.
-          ${content}`;
+          // Check if we got meaningful content
+          if (content.trim().length < 200) {
+            content = `This appears to be a ${fileInfo.type || "PDF"} file (${
+              fileInfo.name
+            }) that contains primarily images or scanned content with minimal extractable text. The document likely contains visual content such as charts, diagrams, or images that could not be properly extracted as text. Based on the filename and any available text, please generate appropriate study materials related to the document's subject matter.\n\nLimited extracted text: ${content}`;
+          }
+        } catch (pdfError) {
+          console.error("Error parsing PDF with pdf-parse:", pdfError);
+          throw new Error("Failed to extract text from PDF document");
+        }
+      } else {
+        // For other document types
+        content = await file.text();
+
+        // Detect if the content appears to be binary
+        const isBinary =
+          content &&
+          (content.includes("%PDF") ||
+            /[\x00-\x1F\x80-\xFF]/.test(content.substring(0, 500)) ||
+            content.includes("PK")); // ZIP files and office documents
+
+        if (isBinary) {
+          console.log(
+            `Binary content detected in ${fileInfo.name}. Using enhanced extraction.`
+          );
+
+          // For binary content, extract as much text as possible
+          // Remove control characters but preserve spacing and structure
+          content = content
+            .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, " ") // Remove control chars
+            .replace(/\\n/g, "\n")
+            .replace(/\\r/g, "\r") // Preserve line breaks
+            .replace(/\\t/g, "\t") // Preserve tabs
+            .replace(/\\\\/g, "\\")
+            .replace(/\\"/g, '"') // Unescape
+            .replace(/([^\x20-\x7E\n\r\t])/g, " "); // Replace other non-printable chars
+
+          if (content.length < 500) {
+            // If we couldn't extract much text, add special instructions
+            content = `This appears to be a ${
+              fileInfo.type || fileInfo.name
+            } file with limited text content that can be extracted directly. 
+            The document may contain images, charts, or formatted text that is not easily extractable as plain text.
+            ${content}`;
+          }
         }
       }
     } catch (fileError) {
@@ -107,11 +146,62 @@ export async function POST(req) {
     // Even if content seems empty, don't reject it completely
     // Instead, provide file info to the AI model
     if (!content || content.trim().length === 0) {
+      // Create context-specific fallback based on filename
+      let contextClue = "";
+      if (fileInfo.name) {
+        const filename = fileInfo.name.toLowerCase();
+        // Check for common academic subjects in the filename
+        if (
+          filename.includes("biomedical") ||
+          filename.includes("imaging") ||
+          filename.includes("radiology") ||
+          filename.includes("mri")
+        ) {
+          contextClue = "Biomedical Imaging";
+        } else if (filename.includes("anatomy")) {
+          contextClue = "Anatomy";
+        } else if (filename.includes("physiology")) {
+          contextClue = "Physiology";
+        } else if (filename.includes("biochem")) {
+          contextClue = "Biochemistry";
+        } else if (filename.includes("psychology")) {
+          contextClue = "Psychology";
+        } else if (filename.includes("neuro")) {
+          contextClue = "Neuroscience";
+        } else if (filename.includes("pharma")) {
+          contextClue = "Pharmacology";
+        } else if (filename.includes("micro")) {
+          contextClue = "Microbiology";
+        } else if (filename.includes("patho")) {
+          contextClue = "Pathology";
+        } else if (filename.includes("chem")) {
+          contextClue = "Chemistry";
+        } else if (filename.includes("physics")) {
+          contextClue = "Physics";
+        } else if (filename.includes("bio")) {
+          contextClue = "Biology";
+        } else if (filename.includes("math")) {
+          contextClue = "Mathematics";
+        } else if (filename.includes("comp")) {
+          contextClue = "Computer Science";
+        } else if (filename.includes("econ")) {
+          contextClue = "Economics";
+        } else if (filename.includes("hist")) {
+          contextClue = "History";
+        } else if (filename.includes("lit")) {
+          contextClue = "Literature";
+        }
+      }
+
+      const contextHint = contextClue
+        ? `related to ${contextClue}`
+        : "related to academic or scientific topics";
+
       content = `This file (${
         fileInfo.name || "document"
       }) appears to contain no extractable text content. 
-      It may contain only images, charts, or other non-text elements.
-      Please provide educational summaries and quiz questions about biology/medical topics that would likely be covered in a document with this name/type.`;
+      It likely contains primarily images, charts, or other visual elements ${contextHint}.
+      Please provide educational summaries and quiz questions on topics that would likely be covered in a document with this name/type.`;
     }
 
     let summary = null;
