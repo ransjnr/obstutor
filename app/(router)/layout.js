@@ -25,7 +25,7 @@ function layout({ children }) {
   };
 
   return (
-    <div>
+    <div style={{ background: "#ffffff" }}>
       {/* Hide the main sidebar when in AI section */}
       {!isAISection && (
         <div

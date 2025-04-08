@@ -34,44 +34,84 @@ export async function POST(req) {
 
     // Extract content from the file
     let content;
+    let fileInfo = {
+      type: "",
+      name: "",
+      size: 0,
+    };
+
     try {
-      // For PDFs, ideally we would use a PDF parsing library
-      // For now, we'll use the text method which works for plain text files and some PDFs
+      // Collect file metadata for better processing
+      if (file) {
+        fileInfo = {
+          type: file.type || "",
+          name: file.name || "",
+          size: file.size || 0,
+        };
+        console.log(
+          `Processing file: ${fileInfo.name}, type: ${fileInfo.type}, size: ${fileInfo.size} bytes`
+        );
+      }
+
+      // For PDFs and other complex document types
       content = await file.text();
 
-      // If content appears to be binary (like in some PDFs), we'll use mock data
-      if (
+      // Detect if the content appears to be binary
+      const isBinary =
         content &&
         (content.includes("%PDF") ||
-          /[^\x00-\x7F]/.test(content.substring(0, 100)))
-      ) {
-        console.log("Detected binary PDF content, using extracted content");
-        // Use some identifiable content from the PDF if possible
-        // For a real-world solution, you'd use a PDF extraction library
+          /[\x00-\x1F\x80-\xFF]/.test(content.substring(0, 500)) ||
+          content.includes("PK")); // ZIP files and office documents
+
+      if (isBinary) {
+        console.log(
+          `Binary content detected in ${fileInfo.name}. Using enhanced extraction.`
+        );
+
+        // For binary content, extract as much text as possible
+        // Remove control characters but preserve spacing and structure
+        content = content
+          .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, " ") // Remove control chars
+          .replace(/\\n/g, "\n")
+          .replace(/\\r/g, "\r") // Preserve line breaks
+          .replace(/\\t/g, "\t") // Preserve tabs
+          .replace(/\\\\/g, "\\")
+          .replace(/\\"/g, '"') // Unescape
+          .replace(/([^\x20-\x7E\n\r\t])/g, " "); // Replace other non-printable chars
+
+        if (content.length < 500) {
+          // If we couldn't extract much text, add special instructions
+          content = `This appears to be a ${
+            fileInfo.type || fileInfo.name
+          } file with limited text content that can be extracted directly. 
+          The document may contain images, charts, or formatted text that is not easily extractable as plain text.
+          ${content}`;
+        }
       }
     } catch (fileError) {
       console.error("Error reading file:", fileError);
+
+      // Provide more helpful error for the user
       return NextResponse.json(
         {
-          error: `Error reading file: ${fileError.message}`,
-          summary:
-            "Could not read the contents of the uploaded file. Please ensure it's a valid text-based file.",
+          error: `Error processing file: ${fileError.message}`,
+          summary: `Could not process the ${
+            fileInfo.name || "file"
+          }. This may be due to an unsupported format or file corruption. Please try converting to PDF or text format.`,
           quizQuestions: null,
         },
         { status: 400 }
       );
     }
 
+    // Even if content seems empty, don't reject it completely
+    // Instead, provide file info to the AI model
     if (!content || content.trim().length === 0) {
-      return NextResponse.json(
-        {
-          error: "Could not extract content from the file",
-          summary:
-            "The uploaded file appears to be empty or could not be processed. Please try a different file.",
-          quizQuestions: null,
-        },
-        { status: 400 }
-      );
+      content = `This file (${
+        fileInfo.name || "document"
+      }) appears to contain no extractable text content. 
+      It may contain only images, charts, or other non-text elements.
+      Please provide educational summaries and quiz questions about biology/medical topics that would likely be covered in a document with this name/type.`;
     }
 
     let summary = null;
@@ -145,32 +185,17 @@ export async function POST(req) {
 
         // Format quiz questions to expected structure if needed
         if (quizQuestions && Array.isArray(quizQuestions)) {
-          // Transform quiz questions if they have options format (from API) to Q&A format (for frontend)
+          // No need to transform - we'll use the enhanced format directly
+          // Just make sure all required fields are present
           quizQuestions = quizQuestions.map((q) => {
-            // If already in the right format, return as is
-            if (q.question && q.answer && typeof q.answer === "string") {
-              return q;
-            }
-
-            // If it has options array and answer index, convert to expected format
-            if (
-              q.question &&
-              Array.isArray(q.options) &&
-              typeof q.answer === "number"
-            ) {
-              const correctOption = q.options[q.answer];
-              return {
-                question: q.question,
-                answer: `The correct answer is: ${correctOption}. ${
-                  q.explanation || ""
-                }`,
-              };
-            }
-
-            // Default case
+            // Ensure all questions have the necessary fields
             return {
               question: q.question || "Could not generate a proper question",
-              answer: q.answer || "Could not generate a proper answer",
+              options: Array.isArray(q.options) ? q.options : [],
+              answer: q.answer || "Could not determine the correct answer",
+              explanation: q.explanation || "No explanation provided",
+              type: q.type || "multiple-choice",
+              difficulty: q.difficulty || "medium",
             };
           });
         }
@@ -178,22 +203,53 @@ export async function POST(req) {
         console.error("Error generating quiz:", quizError);
         errors.push(`Quiz error: ${quizError.message}`);
 
-        // Use sample quiz questions as fallback
+        // Use enhanced sample quiz questions as fallback
         quizQuestions = [
           {
-            question: "What are the key components of cell structure?",
-            answer:
-              "The key components include the cell membrane, cytoplasm, nucleus, mitochondria, endoplasmic reticulum, Golgi apparatus, and various other organelles, each with specific functions.",
+            question:
+              "Which cellular organelle is primarily responsible for energy production in eukaryotic cells?",
+            options: [
+              "A. Nucleus",
+              "B. Mitochondria",
+              "C. Golgi apparatus",
+              "D. Endoplasmic reticulum",
+              "E. Lysosome",
+            ],
+            answer: "B. Mitochondria",
+            explanation:
+              "Mitochondria are known as the powerhouse of the cell and are responsible for producing ATP through cellular respiration. The nucleus contains genetic material, the Golgi apparatus processes and packages proteins, the endoplasmic reticulum is involved in protein synthesis and transport, and lysosomes contain digestive enzymes.",
+            type: "multiple-choice",
+            difficulty: "easy",
           },
           {
-            question: "How does cellular respiration work?",
-            answer:
-              "Cellular respiration is the process by which cells convert nutrients into ATP, the energy currency of the cell. It involves glycolysis, the Krebs cycle, and oxidative phosphorylation.",
+            question:
+              "Which of the following best describes the process of cellular respiration?",
+            options: [
+              "A. Converting light energy into chemical energy",
+              "B. Breaking down glucose to produce ATP, CO2, and H2O",
+              "C. Using oxygen to directly synthesize proteins",
+              "D. Converting CO2 and H2O into glucose",
+            ],
+            answer: "B. Breaking down glucose to produce ATP, CO2, and H2O",
+            explanation:
+              "Cellular respiration is the metabolic process where cells break down glucose and other nutrients to produce energy in the form of ATP, releasing carbon dioxide and water as byproducts. Option A describes photosynthesis, option C incorrectly describes protein synthesis, and option D describes photosynthesis in reverse.",
+            type: "multiple-choice",
+            difficulty: "medium",
           },
           {
-            question: "What is the role of DNA in cellular function?",
-            answer:
-              "DNA contains the genetic instructions for the development, functioning, and reproduction of all living organisms. It encodes information for protein synthesis through transcription and translation processes.",
+            question:
+              "In a patient presenting with symptoms of hyperglycemia, which of the following would you expect to observe?",
+            options: [
+              "A. Decreased blood glucose levels",
+              "B. Increased insulin sensitivity",
+              "C. Polyuria (excessive urination)",
+              "D. Hypoglycemic seizures",
+            ],
+            answer: "C. Polyuria (excessive urination)",
+            explanation:
+              "Hyperglycemia (high blood glucose) typically causes polyuria as the kidneys try to eliminate excess glucose through increased urine production. Options A and D are associated with hypoglycemia (low blood glucose), not hyperglycemia. Option B would actually lower blood glucose levels, not raise them.",
+            type: "case-based",
+            difficulty: "hard",
           },
         ];
       }

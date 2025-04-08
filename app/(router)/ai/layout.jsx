@@ -4,7 +4,8 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function AILayout({ children }) {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  // Start with sidebar closed by default
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Toggle sidebar visibility
   const toggleSidebar = () => {
@@ -12,7 +13,7 @@ export default function AILayout({ children }) {
   };
 
   return (
-    <div className="relative">
+    <div className="relative h-full">
       {/* Toggle button for sidebar */}
       <button
         onClick={toggleSidebar}
@@ -29,10 +30,10 @@ export default function AILayout({ children }) {
 
       {/* AI Sidebar */}
       <motion.div
-        initial={{ width: "240px" }}
+        initial={{ width: "0px" }}
         animate={{ width: isSidebarOpen ? "240px" : "0px" }}
         transition={{ duration: 0.3 }}
-        className="fixed top-16 left-0 h-[calc(100vh-4rem)] bg-white border-r border-gray-200 overflow-hidden z-10"
+        className="fixed top-16 left-0 h-[calc(100vh-4rem)] bg-white border-r border-gray-200 overflow-y-auto z-10"
       >
         <div className="p-4">
           <h2 className="text-lg font-semibold mb-4">AI History</h2>
@@ -46,10 +47,10 @@ export default function AILayout({ children }) {
 
       {/* Main content */}
       <motion.div
-        initial={{ marginLeft: "240px" }}
+        initial={{ marginLeft: "0px" }}
         animate={{ marginLeft: isSidebarOpen ? "240px" : "0px" }}
         transition={{ duration: 0.3 }}
-        className="transition-all duration-300"
+        className="h-full"
       >
         {children}
       </motion.div>

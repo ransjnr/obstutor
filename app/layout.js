@@ -43,7 +43,7 @@ export default function RootLayout({ children }) {
             `}
           </Script>
         </head>
-        <body>
+        <body style={{ background: "#ffffff" }}>
           {children}
 
           <Toaster />

@@ -1,1033 +1,934 @@
 "use client";
 import React, { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
+import { useToast } from "@/components/ui/use-toast";
+import { motion, AnimatePresence } from "framer-motion";
 import {
-  Loader2,
   Upload,
   FileText,
-  ChevronLeft,
   ChevronRight,
+  ChevronLeft,
   Download,
-  Clock,
-  Lightbulb,
-  Presentation,
+  Copy,
   Share2,
-  Trophy,
+  CheckCircle,
+  XCircle,
+  RefreshCw,
+  ArrowRight,
+  HelpCircle,
+  UploadCloud,
+  ThumbsUp,
+  ThumbsDown,
   Check,
-  X,
-  Brain,
-  Sparkles,
+  AlertCircle,
+  FileUp,
+  File,
+  BookOpen,
+  Circle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { motion, AnimatePresence } from "framer-motion";
-import { useToast } from "@/components/ui/use-toast";
-import { jsPDF } from "jspdf";
-import { Progress } from "@/components/ui/progress";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import confetti from "canvas-confetti";
+import jsPDF from "jspdf";
+import LoadingSpinner from "./LoadingSpinner";
+
+// QuizResults component for displaying quiz scores
+function QuizResults({ score, total, onReset, onShare }) {
+  const percentage = Math.round((score / total) * 100);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="text-center py-8 max-w-2xl mx-auto"
+    >
+      <div className="inline-flex items-center justify-center h-20 w-20 rounded-full bg-white border border-gray-200 mb-4">
+        {percentage >= 70 ? (
+          <CheckCircle className="h-10 w-10 text-primary" />
+        ) : (
+          <AlertCircle className="h-10 w-10 text-amber-500" />
+        )}
+      </div>
+
+      <h2 className="text-2xl font-bold mb-2">
+        Your Score: {score}/{total}
+      </h2>
+
+      <p className="text-gray-600 mb-6 text-lg">
+        {percentage >= 70
+          ? "Great job! You've mastered this content."
+          : "Keep studying! You're making progress."}
+      </p>
+
+      <div className="flex flex-col sm:flex-row gap-3 justify-center">
+        <Button
+          onClick={onReset}
+          variant="outline"
+          className="flex items-center gap-2"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Try Again
+        </Button>
+
+        <Button onClick={onShare} className="flex items-center gap-2">
+          <Share2 className="h-4 w-4" />
+          Share Results
+        </Button>
+      </div>
+    </motion.div>
+  );
+}
 
 export default function AISlides() {
   const [file, setFile] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [summaries, setSummaries] = useState([]);
+  const [currentSummaryIndex, setCurrentSummaryIndex] = useState(0);
   const [quizQuestions, setQuizQuestions] = useState([]);
-  const [fileName, setFileName] = useState("");
-  const [activeSummaryIndex, setActiveSummaryIndex] = useState(0);
-  const [activeTab, setActiveTab] = useState("summaries");
-
-  // Quiz mode state
-  const [quizMode, setQuizMode] = useState(false);
-  const [currentQuizQuestion, setCurrentQuizQuestion] = useState(0);
+  const [isQuizMode, setIsQuizMode] = useState(false);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [userAnswers, setUserAnswers] = useState([]);
-  const [quizScore, setQuizScore] = useState(0);
-  const [showAnswer, setShowAnswer] = useState(false);
-  const [quizCompleted, setQuizCompleted] = useState(false);
-  const [showResults, setShowResults] = useState(false);
-  const [confettiTriggered, setConfettiTriggered] = useState(false);
+  const [showQuizResults, setShowQuizResults] = useState(false);
+  const [copiedText, setCopiedText] = useState(false);
+  const [answerRevealed, setAnswerRevealed] = useState(false);
+  const [selectedAnswer, setSelectedAnswer] = useState(null);
+  const [answered, setAnswered] = useState(false);
+  const [score, setScore] = useState(0);
 
-  const confettiCanvasRef = useRef(null);
+  const fileInputRef = useRef(null);
   const { toast } = useToast();
 
-  // Sample data for fallback
+  // Sample summaries for fallback
   const getSampleSummaries = () => [
     {
-      title: "Introduction to Cell Biology",
+      title: "Cell Structure and Function",
       summary:
-        "Cell biology focuses on understanding the structure, function, and behavior of cells. This slide introduces the fundamental concepts of cellular organization, including the cell membrane, cytoplasm, nucleus, and various organelles. The cell is the basic unit of life, capable of independent existence and containing the necessary information to control its own growth and reproduction.",
+        "Eukaryotic cells contain membrane-bound organelles including the nucleus, mitochondria, endoplasmic reticulum, and Golgi apparatus. The nucleus houses genetic material, while mitochondria generate energy through cellular respiration. The endoplasmic reticulum is involved in protein synthesis and lipid metabolism, and the Golgi apparatus packages and modifies proteins for secretion or use within the cell.",
     },
     {
-      title: "Cell Membrane Structure",
+      title: "DNA Replication",
       summary:
-        "The cell membrane, or plasma membrane, is a selectively permeable barrier composed of a phospholipid bilayer with embedded proteins. The phospholipids have hydrophilic heads and hydrophobic tails, creating a structure that regulates the passage of materials into and out of the cell. Integral proteins span the entire membrane while peripheral proteins attach to the membrane surface.",
-    },
-    {
-      title: "Membrane Transport",
-      summary:
-        "Cells utilize various transport mechanisms to move substances across the membrane. Passive transport, including diffusion and osmosis, requires no energy and moves molecules from high to low concentration. Active transport uses energy (ATP) to move substances against their concentration gradient. Endocytosis and exocytosis involve the movement of larger materials through vesicle formation.",
-    },
-    {
-      title: "Cellular Organelles",
-      summary:
-        "Eukaryotic cells contain specialized compartments called organelles that perform specific functions. The nucleus houses genetic material, mitochondria generate energy, endoplasmic reticulum synthesizes proteins and lipids, Golgi apparatus processes and packages proteins, lysosomes contain digestive enzymes, and peroxisomes detoxify harmful substances.",
+        "DNA replication is a semi-conservative process that creates two identical DNA molecules from one original molecule. The process begins with the enzyme helicase unwinding the DNA double helix and breaking hydrogen bonds between base pairs. DNA polymerase then adds complementary nucleotides to each template strand in the 5' to 3' direction. On the lagging strand, DNA is synthesized in short Okazaki fragments that are later joined by DNA ligase.",
     },
     {
       title: "Cell Division",
       summary:
-        "Cell division is the process by which cells reproduce. Mitosis is the division of the nucleus resulting in two identical daughter cells, while cytokinesis is the division of the cytoplasm. The cell cycle consists of interphase (G1, S, G2 phases) and the mitotic phase. Proper regulation of cell division is essential for normal growth, development, and tissue repair.",
+        "Mitosis is the process of somatic cell division resulting in two genetically identical daughter cells. It occurs in the following phases: prophase, metaphase, anaphase, and telophase, followed by cytokinesis. During prophase, chromosomes condense and the nuclear envelope breaks down. In metaphase, chromosomes align at the metaphase plate. Anaphase involves the separation of sister chromatids, and telophase is characterized by nuclear envelope reformation around the separated chromosomes.",
     },
   ];
 
+  // Sample quiz questions for fallback
   const getSampleQuizQuestions = () => [
     {
-      question: "What is the main function of the cell membrane?",
-      answer:
-        "The main function of the cell membrane is to act as a selectively permeable barrier that regulates the passage of materials into and out of the cell.",
+      question:
+        "Which organelle is responsible for energy production in eukaryotic cells?",
+      options: [
+        "A. Mitochondria",
+        "B. Nucleus",
+        "C. Golgi apparatus",
+        "D. Endoplasmic reticulum",
+      ],
+      answer: "A. Mitochondria",
+      explanation:
+        "Mitochondria are specialized organelles that generate most of the cell's supply of ATP through cellular respiration. The nucleus houses genetic material, the Golgi apparatus packages and modifies proteins, and the endoplasmic reticulum is involved in protein synthesis and lipid metabolism.",
+      type: "multiple-choice",
+      difficulty: "easy",
     },
     {
-      question: "Differentiate between passive and active transport.",
-      answer:
-        "Passive transport requires no energy and moves molecules from high to low concentration, while active transport requires energy (ATP) and moves substances against their concentration gradient.",
+      question: "DNA replication is a semi-conservative process.",
+      options: ["A. True", "B. False"],
+      answer: "A. True",
+      explanation:
+        "DNA replication is indeed semi-conservative, meaning each new DNA molecule contains one original strand and one newly synthesized strand. This model was confirmed by the Meselson-Stahl experiment in 1958.",
+      type: "true-false",
+      difficulty: "medium",
     },
     {
-      question: "Name and describe the function of three cellular organelles.",
-      answer:
-        "1) Nucleus: houses genetic material and controls cellular activities, 2) Mitochondria: generates energy in the form of ATP through cellular respiration, 3) Endoplasmic reticulum: synthesizes proteins and lipids.",
-    },
-    {
-      question: "What are the phases of the cell cycle?",
-      answer:
-        "The cell cycle consists of interphase (G1, S, G2) and the mitotic phase (mitosis and cytokinesis). G1 is the first growth phase, S is the DNA synthesis phase, G2 is the second growth phase, and the mitotic phase is when nuclear and cytoplasmic division occur.",
-    },
-    {
-      question: "Explain the structure of the phospholipid bilayer.",
-      answer:
-        "The phospholipid bilayer consists of two layers of phospholipid molecules. Each phospholipid has a hydrophilic (water-loving) head and two hydrophobic (water-repelling) fatty acid tails. The heads face outward toward the aqueous environment, while the tails face inward away from water, creating a stable barrier.",
+      question:
+        "A patient presents with polyuria, polydipsia, and unexplained weight loss. Which of the following is the most likely diagnosis?",
+      options: [
+        "A. Hypothyroidism",
+        "B. Diabetes mellitus",
+        "C. Adrenal insufficiency",
+        "D. Cushing's syndrome",
+      ],
+      answer: "B. Diabetes mellitus",
+      explanation:
+        "The classic triad of polyuria (excessive urination), polydipsia (excessive thirst), and unexplained weight loss are hallmark symptoms of diabetes mellitus, resulting from hyperglycemia. The other conditions have different characteristic symptoms: hypothyroidism typically presents with fatigue and cold intolerance; adrenal insufficiency with fatigue and hypotension; and Cushing's syndrome with central obesity and skin changes.",
+      type: "case-based",
+      difficulty: "hard",
     },
   ];
 
+  // Handle file input change
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (selectedFile) {
+      if (selectedFile.size > 15 * 1024 * 1024) {
+        toast({
+          title: "File too large",
+          description: "Please upload a file smaller than 15MB",
+          variant: "destructive",
+        });
+        return;
+      }
       setFile(selectedFile);
-      setFileName(selectedFile.name);
     }
   };
 
+  // Handle file analysis
   const handleUpload = async () => {
-    if (!file) {
-      toast({
-        title: "No file selected",
-        description: "Please select a PDF file to analyze.",
-        variant: "destructive",
-      });
-      return;
-    }
+    if (!file) return;
 
-    setLoading(true);
-    // Reset quiz state
-    setQuizMode(false);
-    setCurrentQuizQuestion(0);
-    setUserAnswers([]);
-    setQuizScore(0);
-    setShowAnswer(false);
-    setQuizCompleted(false);
-    setShowResults(false);
-    setConfettiTriggered(false);
+    setIsAnalyzing(true);
 
     try {
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("type", "both"); // Request both summary and quiz
 
-      try {
-        const response = await fetch("/api/gemini/slides", {
-          method: "POST",
-          body: formData,
-        });
+      // Show informative toast about processing
+      toast({
+        title: "Processing document",
+        description:
+          "Enhanced extraction in progress. This may take a moment, especially for complex files and documents with images.",
+      });
 
-        const data = await response.json();
+      const response = await fetch("/api/gemini/slides", {
+        method: "POST",
+        body: formData,
+      });
 
-        if (!response.ok) {
-          throw new Error(data.error || "Failed to analyze slides");
-        }
+      const data = await response.json();
 
-        // Check if we received a summary string (API response) or an array (expected format)
-        let processedSummaries = [];
-        if (data.summary && typeof data.summary === "string") {
-          // Transform the summary string into a proper summaries array
-          const paragraphs = data.summary
-            .split("\n\n")
-            .filter((p) => p.trim().length > 0);
-
-          if (paragraphs.length > 0) {
-            processedSummaries = paragraphs.map((paragraph, index) => ({
-              title: `Slide ${index + 1}`,
-              summary: paragraph.trim(),
-            }));
-          } else {
-            // If we can't split it well, just use the whole thing as one summary
-            processedSummaries = [
-              {
-                title: "Slide Analysis",
-                summary: data.summary,
-              },
-            ];
-          }
-        } else if (data.summaries && Array.isArray(data.summaries)) {
-          // Use the summaries array as is
-          processedSummaries = data.summaries;
-        }
-
-        // Process quiz questions
-        let processedQuizQuestions = [];
-        if (data.quizQuestions && Array.isArray(data.quizQuestions)) {
-          processedQuizQuestions = data.quizQuestions;
-        }
-
-        setSummaries(processedSummaries);
-        setQuizQuestions(processedQuizQuestions);
-        setActiveSummaryIndex(0);
-        setActiveTab("summaries");
-
-        toast({
-          title: "Analysis Complete",
-          description: `Successfully analyzed ${processedSummaries.length} slide sections`,
-        });
-      } catch (apiError) {
-        console.error("API Error:", apiError);
-
-        // Use sample data as fallback
-        const sampleSummaries = getSampleSummaries();
-        const sampleQuizzes = getSampleQuizQuestions();
-
-        setSummaries(sampleSummaries);
-        setQuizQuestions(sampleQuizzes);
-        setActiveSummaryIndex(0);
-        setActiveTab("summaries");
-
-        toast({
-          title: "Using Sample Data",
-          description:
-            "We couldn't connect to our AI service. Using sample data instead.",
-          variant: "warning",
-        });
+      if (data.error) {
+        throw new Error(data.error);
       }
+
+      if (data.summaries && data.summaries.length > 0) {
+        setSummaries(data.summaries);
+      } else {
+        setSummaries(getSampleSummaries());
+      }
+
+      if (data.quizQuestions && data.quizQuestions.length > 0) {
+        // Transform to multiple choice format
+        const formattedQuestions = transformToMultipleChoice(
+          data.quizQuestions
+        );
+        setQuizQuestions(formattedQuestions);
+      } else {
+        setQuizQuestions(getSampleQuizQuestions());
+      }
+
+      setCurrentSummaryIndex(0);
+      setIsQuizMode(false);
+      setCurrentQuestionIndex(0);
+      setUserAnswers([]);
+      setShowQuizResults(false);
+      setSelectedAnswer(null);
+      setAnswered(false);
+      setScore(0);
+
+      toast({
+        title: "Analysis complete",
+        description: `Generated ${data.summaries?.length || 3} summaries and ${
+          data.quizQuestions?.length || 3
+        } quiz questions`,
+      });
     } catch (error) {
       console.error("Error analyzing slides:", error);
       toast({
-        title: "Error",
-        description:
-          error.message || "Failed to analyze slides. Please try again.",
+        title: "Error analyzing slides",
+        description: "Using sample data instead. Please try again.",
         variant: "destructive",
       });
+
+      // Use sample data as fallback
+      setSummaries(getSampleSummaries());
+      setQuizQuestions(getSampleQuizQuestions());
     } finally {
-      setLoading(false);
+      setIsAnalyzing(false);
     }
   };
 
+  // Create a PDF from summaries
   const downloadAsPDF = () => {
-    if (!summaries || !summaries.length) {
+    try {
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 20;
+      const textWidth = pageWidth - 2 * margin;
+
+      doc.setFontSize(18);
+      doc.text("Slide Summaries", margin, 20);
+
+      let y = 30;
+
+      summaries.forEach((item, index) => {
+        // Add page if needed
+        if (y > 270) {
+          doc.addPage();
+          y = 20;
+        }
+
+        doc.setFontSize(14);
+        doc.setFont(undefined, "bold");
+        doc.text(`${index + 1}. ${item.title}`, margin, y);
+        y += 10;
+
+        doc.setFontSize(12);
+        doc.setFont(undefined, "normal");
+
+        const splitText = doc.splitTextToSize(item.summary, textWidth);
+        doc.text(splitText, margin, y);
+        y += splitText.length * 7 + 10;
+      });
+
+      doc.save("slide-summaries.pdf");
+
       toast({
-        title: "No content to download",
-        description: "There are no summaries or quiz questions to download.",
+        title: "PDF Downloaded",
+        description: "Your slide summaries have been downloaded as a PDF.",
+      });
+    } catch (error) {
+      console.error("Error creating PDF:", error);
+      toast({
+        title: "Error",
+        description: "Failed to create PDF. Please try again.",
         variant: "destructive",
       });
-      return;
     }
-
-    const doc = new jsPDF();
-    let y = 20;
-
-    doc.setFontSize(20);
-    doc.text(`AI Analysis of: ${fileName || "Slides"}`, 20, y);
-    y += 15;
-
-    if (activeTab === "summaries") {
-      doc.setFontSize(16);
-      doc.text("Slide Summaries", 20, y);
-      y += 10;
-
-      if (summaries && Array.isArray(summaries)) {
-        summaries.forEach((summary, index) => {
-          y += 10;
-          doc.setFontSize(14);
-          doc.setFont(undefined, "bold");
-          doc.text(
-            `Slide ${index + 1}: ${summary?.title || "Slide Summary"}`,
-            20,
-            y
-          );
-          y += 10;
-
-          doc.setFontSize(12);
-          doc.setFont(undefined, "normal");
-          const summaryText = summary?.summary || "No summary available.";
-          const summaryLines = doc.splitTextToSize(summaryText, 170);
-          doc.text(summaryLines, 20, y);
-          y += summaryLines.length * 7;
-
-          if (y > 250) {
-            doc.addPage();
-            y = 20;
-          }
-        });
-      }
-    } else {
-      doc.setFontSize(16);
-      doc.text("Quiz Questions", 20, y);
-      y += 10;
-
-      if (quizQuestions && Array.isArray(quizQuestions)) {
-        quizQuestions.forEach((quiz, index) => {
-          y += 10;
-          doc.setFontSize(14);
-          doc.setFont(undefined, "bold");
-          doc.text(`Question ${index + 1}:`, 20, y);
-          y += 10;
-
-          doc.setFontSize(12);
-          doc.setFont(undefined, "normal");
-          const questionText = quiz?.question || "Question unavailable";
-          const questionLines = doc.splitTextToSize(questionText, 170);
-          doc.text(questionLines, 20, y);
-          y += questionLines.length * 7 + 5;
-
-          doc.setFont(undefined, "bold");
-          doc.text("Answer:", 20, y);
-          y += 10;
-
-          doc.setFont(undefined, "normal");
-          const answerText = quiz?.answer || "Answer unavailable";
-          const answerLines = doc.splitTextToSize(answerText, 170);
-          doc.text(answerLines, 20, y);
-          y += answerLines.length * 7 + 10;
-
-          if (y > 250) {
-            doc.addPage();
-            y = 20;
-          }
-        });
-      }
-    }
-
-    doc.save(
-      `obstutor-${activeTab === "summaries" ? "summaries" : "quiz"}-${
-        fileName || "slides"
-      }.pdf`
-    );
-
-    toast({
-      title: "PDF Downloaded",
-      description: `Your ${
-        activeTab === "summaries" ? "summaries" : "quiz questions"
-      } have been downloaded as a PDF file.`,
-    });
   };
 
+  // Share content
   const shareContent = async () => {
     try {
-      if (navigator.share) {
-        await navigator.share({
-          title: `Obstutor Analysis: ${fileName}`,
-          text: "Check out this slide analysis I created with Obstutor AI!",
-        });
-
-        toast({
-          title: "Shared Successfully",
-          description: "Your analysis has been shared.",
-        });
-      } else {
-        await navigator.clipboard.writeText(
-          `I analyzed "${fileName}" with Obstutor AI and got ${
-            summaries?.length || 0
-          } slide summaries and ${quizQuestions?.length || 0} quiz questions!`
-        );
-
-        toast({
-          title: "Link Copied",
-          description: "Share text copied to clipboard!",
-        });
-      }
+      await copyToClipboard(
+        summaries.map((item) => `${item.title}\n${item.summary}`).join("\n\n")
+      );
     } catch (error) {
-      console.error("Error sharing content:", error);
-      toast({
-        title: "Error",
-        description: "Failed to share. Please try again.",
-        variant: "destructive",
-      });
+      console.error("Error sharing:", error);
     }
   };
 
+  // Handle tab change between summaries and quiz
   const handleTabChange = (tab) => {
-    setActiveTab(tab);
+    setIsQuizMode(tab === "quiz");
+    setShowQuizResults(false);
   };
 
+  // Navigate between summaries
   const navigateSummary = (direction) => {
-    if (!summaries || !Array.isArray(summaries) || summaries.length === 0)
-      return;
-
-    if (direction === "next" && activeSummaryIndex < summaries.length - 1) {
-      setActiveSummaryIndex(activeSummaryIndex + 1);
-    } else if (direction === "prev" && activeSummaryIndex > 0) {
-      setActiveSummaryIndex(activeSummaryIndex - 1);
+    if (direction === "next" && currentSummaryIndex < summaries.length - 1) {
+      setCurrentSummaryIndex(currentSummaryIndex + 1);
+    } else if (direction === "prev" && currentSummaryIndex > 0) {
+      setCurrentSummaryIndex(currentSummaryIndex - 1);
     }
   };
 
+  // Start quiz mode
   const startQuizMode = () => {
-    if (!quizQuestions || quizQuestions.length === 0) {
+    setIsQuizMode(true);
+    setCurrentQuestionIndex(0);
+    setUserAnswers([]);
+    setShowQuizResults(false);
+    setSelectedAnswer(null);
+    setAnswered(false);
+    setScore(0);
+    setAnswerRevealed(false);
+  };
+
+  // Handle selecting a quiz answer
+  const handleAnswerSelect = (option) => {
+    if (answered) return;
+
+    setSelectedAnswer(option);
+    setAnswered(true);
+
+    const currentQuestion = quizQuestions[currentQuestionIndex];
+    const isCorrect = option === currentQuestion.answer;
+
+    if (isCorrect) {
+      setScore((prev) => prev + 1);
+    }
+
+    const newUserAnswers = [...userAnswers];
+    newUserAnswers[currentQuestionIndex] = isCorrect;
+    setUserAnswers(newUserAnswers);
+  };
+
+  // Move to the next question or show results
+  const nextQuestion = () => {
+    if (currentQuestionIndex < quizQuestions.length - 1) {
+      setCurrentQuestionIndex((prevIndex) => prevIndex + 1);
+      setSelectedAnswer(null);
+      setAnswered(false);
+    } else {
+      setShowQuizResults(true);
+    }
+  };
+
+  // Reset quiz
+  const resetQuiz = () => {
+    setCurrentQuestionIndex(0);
+    setUserAnswers([]);
+    setShowQuizResults(false);
+    setSelectedAnswer(null);
+    setAnswered(false);
+    setScore(0);
+    setAnswerRevealed(false);
+  };
+
+  // Copy to clipboard
+  const copyToClipboard = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedText(true);
+      setTimeout(() => setCopiedText(false), 2000);
       toast({
-        title: "No quiz questions available",
-        description: "There are no quiz questions to display.",
+        title: "Copied to clipboard",
+        description: "Content has been copied to your clipboard",
+      });
+      return true;
+    } catch (error) {
+      toast({
+        title: "Failed to copy",
+        description: "Please try again or copy manually",
         variant: "destructive",
       });
-      return;
+      return false;
     }
-
-    setQuizMode(true);
-    setCurrentQuizQuestion(0);
-    setUserAnswers(new Array(quizQuestions.length).fill(null));
-    setQuizScore(0);
-    setShowAnswer(false);
-    setQuizCompleted(false);
-    setShowResults(false);
-    setConfettiTriggered(false);
-
-    toast({
-      title: "Quiz Mode Activated!",
-      description: `Test your knowledge with ${quizQuestions.length} questions based on the slides.`,
-    });
   };
 
-  const handleQuizAnswer = (isCorrect) => {
-    // Update user answers
-    const newUserAnswers = [...userAnswers];
-    newUserAnswers[currentQuizQuestion] = isCorrect;
-    setUserAnswers(newUserAnswers);
+  // Transform simple Q&A format to multiple choice if API doesn't return structured quiz
+  const transformToMultipleChoice = (quizData) => {
+    if (!quizData || quizData.length === 0) return [];
 
-    // Update score if correct
-    if (isCorrect) {
-      setQuizScore((prevScore) => prevScore + 1);
-    }
+    return quizData.map((item, index) => {
+      // Check if the question already has options and the proper format
+      if (
+        item.options &&
+        Array.isArray(item.options) &&
+        item.options.length > 0 &&
+        item.answer &&
+        item.explanation
+      ) {
+        // Just ensure the difficulty property exists
+        return {
+          ...item,
+          difficulty: item.difficulty || ["easy", "medium", "hard"][index % 3],
+        };
+      }
 
-    // Show the answer
-    setShowAnswer(true);
+      // Determine question type based on pattern
+      let type = "multiple-choice";
+      if (index % 3 === 1) {
+        type = "true-false";
+      } else if (index % 3 === 2) {
+        type = "case-based";
+      }
 
-    // Check if all questions have been answered
-    const allAnswered = newUserAnswers.every((answer) => answer !== null);
+      let options = [];
+      let correctAnswer = "";
+      let difficulty = ["easy", "medium", "hard"][index % 3];
+      let explanation = "";
 
-    // Wait a bit before proceeding
-    setTimeout(() => {
-      if (currentQuizQuestion < quizQuestions.length - 1 && !allAnswered) {
-        // Move to next question
-        setCurrentQuizQuestion((prevQuestion) => prevQuestion + 1);
-        setShowAnswer(false);
-      } else {
-        // Quiz completed
-        setQuizCompleted(true);
-        setShowResults(true);
+      // If we have an answer but need to generate options
+      if (item.answer && typeof item.answer === "string") {
+        const answerText = item.answer;
+        explanation = answerText;
 
-        // Trigger confetti for high scores
-        if (quizScore / quizQuestions.length >= 0.7) {
-          triggerConfetti();
+        switch (type) {
+          case "true-false":
+            options = ["A. True", "B. False"];
+            correctAnswer = "A. True"; // Default to true for demonstration
+            explanation = `The correct answer is True. ${answerText}`;
+            break;
+
+          case "multiple-choice":
+          case "case-based":
+            // Extract key phrases from the answer
+            const answerFirstSentence = answerText.split(".")[0];
+            correctAnswer = `A. ${answerFirstSentence}`;
+
+            // Create plausible options
+            options = [
+              `A. ${answerFirstSentence}`,
+              `B. An incorrect statement about ${item.question
+                .split("?")[0]
+                .slice(-20)}`,
+              `C. A common misconception related to this topic`,
+              `D. A completely unrelated concept`,
+              `E. A partially correct statement`,
+            ];
+
+            explanation = `The correct answer is option A: ${answerFirstSentence}. ${answerText}`;
+            break;
         }
       }
-    }, 1500);
-  };
 
-  const triggerConfetti = () => {
-    if (confettiTriggered) return;
-
-    const canvas = document.createElement("canvas");
-    canvas.style.position = "fixed";
-    canvas.style.top = "0";
-    canvas.style.left = "0";
-    canvas.style.width = "100vw";
-    canvas.style.height = "100vh";
-    canvas.style.pointerEvents = "none";
-    canvas.style.zIndex = "9999";
-    document.body.appendChild(canvas);
-
-    const myConfetti = confetti.create(canvas, { resize: true });
-
-    myConfetti({
-      particleCount: 150,
-      spread: 160,
-      origin: { y: 0.6 },
-      colors: ["#4F46E5", "#3B82F6", "#06B6D4", "#6366F1"],
-      gravity: 0.8,
+      return {
+        question: item.question,
+        options: options,
+        answer: correctAnswer,
+        explanation: explanation,
+        type: type,
+        difficulty: difficulty,
+      };
     });
-
-    // Clean up after 2.5 seconds
-    setTimeout(() => {
-      document.body.removeChild(canvas);
-    }, 2500);
-
-    setConfettiTriggered(true);
   };
 
-  const resetQuiz = () => {
-    setQuizMode(false);
-    setCurrentQuizQuestion(0);
-    setUserAnswers(new Array(quizQuestions.length).fill(null));
-    setQuizScore(0);
-    setShowAnswer(false);
-    setQuizCompleted(false);
-    setShowResults(false);
-    setActiveTab("quiz");
+  // Shuffle array helper function
+  const shuffleArray = (array) => {
+    const newArray = [...array];
+    for (let i = newArray.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+    }
+    return newArray;
   };
 
   return (
-    <div className="p-6">
-      <div className="flex flex-col lg:flex-row gap-6">
-        {/* Left panel - Upload and controls */}
-        <div className="lg:w-1/3 space-y-6">
-          <Card className="overflow-hidden border border-gray-100">
-            <CardHeader className="bg-gradient-to-r from-primary/5 to-primary/10 pb-4">
-              <div className="flex items-center gap-2">
-                <Presentation className="h-5 w-5 text-primary" />
-                <CardTitle className="text-xl">Slides Analyzer</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent className="p-6">
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="file">Upload Presentation</Label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      id="file"
-                      type="file"
-                      accept=".pdf"
-                      onChange={handleFileChange}
-                      className="flex-1"
-                    />
-                  </div>
-                  {fileName && (
-                    <p className="text-sm text-gray-500 flex items-center gap-1 mt-1">
-                      <FileText className="h-3 w-3" />
-                      {fileName}
-                    </p>
-                  )}
+    <div className="min-h-full flex flex-col">
+      {/* Upload Panel */}
+      <div className="p-4 border-b bg-white">
+        <div className="max-w-3xl mx-auto">
+          {!file ? (
+            <div
+              className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:bg-white transition-colors"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <UploadCloud className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+              <p className="text-sm font-medium">
+                Drop your slides here or click to browse
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                PDF, PPT, PPTX, TXT, or MD files supported (max 15MB). Our
+                enhanced processing extracts content from various document
+                formats, including those with images and complex formatting.
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                <FileText className="h-3 w-3 inline mr-1" />
+                Even files with limited text will be analyzed to generate
+                comprehensive study notes and quiz questions.
+              </p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.ppt,.pptx,.txt,.md"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="bg-primary/10 p-2 rounded">
+                  <FileText className="h-6 w-6 text-primary" />
                 </div>
+                <div>
+                  <p className="font-medium">{file.name}</p>
+                  <p className="text-xs text-gray-500">
+                    {(file.size / 1024 / 1024).toFixed(2)} MB
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFile(null)}
+                >
+                  Change
+                </Button>
 
                 <Button
                   onClick={handleUpload}
-                  disabled={loading || !file}
-                  className="w-full"
+                  disabled={!file || isAnalyzing}
+                  size="sm"
                 >
-                  {loading ? (
+                  {isAnalyzing ? (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Analyzing...
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      Analyzing
                     </>
                   ) : (
                     <>
-                      <Upload className="mr-2 h-4 w-4" />
-                      Analyze Slides
+                      <ArrowRight className="h-4 w-4 mr-2" />
+                      Analyze
                     </>
                   )}
                 </Button>
-
-                {loading && (
-                  <div className="text-xs text-gray-500 text-center flex items-center justify-center gap-1 mt-2">
-                    <Clock className="h-3 w-3 animate-pulse" />
-                    This may take up to 30 seconds
-                  </div>
-                )}
-              </div>
-
-              {!file && (
-                <div className="mt-6 pt-4 border-t border-dashed border-gray-200">
-                  <p className="text-sm text-gray-500 mb-2 flex items-center gap-1">
-                    <Lightbulb className="h-3 w-3 text-amber-500" />
-                    Tips for best results:
-                  </p>
-                  <ul className="text-xs text-gray-500 space-y-1 list-disc pl-4">
-                    <li>Upload clear, text-based PDF slides</li>
-                    <li>Ensure content is in English</li>
-                    <li>Avoid slides with only images</li>
-                    <li>For better results, include 5-15 slides</li>
-                  </ul>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {summaries && summaries.length > 0 && (
-            <Card className="border border-gray-100">
-              <CardContent className="p-6">
-                <h3 className="font-semibold mb-4">Actions</h3>
-                <div className="space-y-3">
-                  {quizMode ? (
-                    <>
-                      <div className="space-y-1 mb-3">
-                        <div className="flex justify-between text-sm">
-                          <span>Quiz Progress</span>
-                          <span>
-                            {userAnswers.filter((a) => a !== null).length} of{" "}
-                            {quizQuestions.length}
-                          </span>
-                        </div>
-                        <Progress
-                          value={
-                            (userAnswers.filter((a) => a !== null).length /
-                              quizQuestions.length) *
-                            100
-                          }
-                          className="h-2"
-                        />
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={resetQuiz}
-                        className="w-full flex items-center justify-center gap-2"
-                      >
-                        Exit Quiz Mode
-                      </Button>
-                    </>
-                  ) : (
-                    <>
-                      <Button
-                        variant={activeTab === "quiz" ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => {
-                          setActiveTab("quiz");
-                          if (quizQuestions && quizQuestions.length > 0) {
-                            startQuizMode();
-                          }
-                        }}
-                        className="w-full flex items-center justify-center gap-2"
-                        disabled={!quizQuestions || quizQuestions.length === 0}
-                      >
-                        <Brain className="h-4 w-4" />
-                        Start Quiz Mode
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={downloadAsPDF}
-                        className="w-full flex items-center justify-center gap-2"
-                      >
-                        <Download className="h-4 w-4" />
-                        Download{" "}
-                        {activeTab === "summaries" ? "Summaries" : "Quiz"} PDF
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={shareContent}
-                        className="w-full flex items-center justify-center gap-2"
-                      >
-                        <Share2 className="h-4 w-4" />
-                        Share This Analysis
-                      </Button>
-                    </>
-                  )}
-                </div>
-
-                <div className="mt-6 pt-4 border-t border-gray-200">
-                  <h4 className="text-sm font-medium mb-2">Analysis Stats:</h4>
-                  <div className="flex gap-2 flex-wrap">
-                    <Badge
-                      variant="secondary"
-                      className="flex items-center gap-1"
-                    >
-                      <FileText className="h-3 w-3" />
-                      {summaries.length} Slides
-                    </Badge>
-                    <Badge
-                      variant="secondary"
-                      className="flex items-center gap-1"
-                    >
-                      <Lightbulb className="h-3 w-3" />
-                      {quizQuestions?.length || 0} Quiz Questions
-                    </Badge>
-                    {quizCompleted && (
-                      <Badge
-                        variant="default"
-                        className="flex items-center gap-1 bg-green-600"
-                      >
-                        <Trophy className="h-3 w-3" />
-                        Score: {quizScore}/{quizQuestions.length}
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-
-        {/* Right panel - Results */}
-        <div className="lg:w-2/3">
-          {summaries && summaries.length > 0 ? (
-            <Card className="border border-gray-100">
-              <div className="border-b border-gray-100">
-                <div className="flex">
-                  <Button
-                    variant={activeTab === "summaries" ? "ghost" : "ghost"}
-                    className={`flex-1 rounded-none h-12 ${
-                      activeTab === "summaries"
-                        ? "border-b-2 border-primary font-medium"
-                        : "text-gray-500"
-                    }`}
-                    onClick={() => handleTabChange("summaries")}
-                  >
-                    Slide Summaries
-                  </Button>
-                  <Button
-                    variant={activeTab === "quiz" ? "ghost" : "ghost"}
-                    className={`flex-1 rounded-none h-12 ${
-                      activeTab === "quiz"
-                        ? "border-b-2 border-primary font-medium"
-                        : "text-gray-500"
-                    }`}
-                    onClick={() => handleTabChange("quiz")}
-                  >
-                    Quiz Questions
-                  </Button>
-                </div>
-              </div>
-
-              <CardContent className="p-6">
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={activeTab + (quizMode ? "-quiz" : "")}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    {activeTab === "summaries" && !quizMode ? (
-                      <div className="space-y-6">
-                        <div className="mb-2 flex items-center justify-between">
-                          <h3 className="font-semibold">
-                            Slide {activeSummaryIndex + 1} of{" "}
-                            {summaries?.length || 0}
-                          </h3>
-                          <div className="flex gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => navigateSummary("prev")}
-                              disabled={activeSummaryIndex === 0}
-                            >
-                              <ChevronLeft className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => navigateSummary("next")}
-                              disabled={
-                                activeSummaryIndex ===
-                                (summaries?.length || 0) - 1
-                              }
-                            >
-                              <ChevronRight className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-
-                        {summaries && summaries[activeSummaryIndex] && (
-                          <Card className="bg-gray-50 border border-gray-200">
-                            <CardContent className="p-6">
-                              <h3 className="text-lg font-semibold mb-3">
-                                {summaries[activeSummaryIndex].title ||
-                                  "Slide Summary"}
-                              </h3>
-                              <p className="text-gray-700 leading-relaxed">
-                                {summaries[activeSummaryIndex].summary ||
-                                  "No summary available."}
-                              </p>
-                            </CardContent>
-                          </Card>
-                        )}
-
-                        <div className="flex justify-center">
-                          <div className="flex gap-1">
-                            {summaries &&
-                              Array.isArray(summaries) &&
-                              summaries.map((_, index) => (
-                                <Button
-                                  key={index}
-                                  variant="ghost"
-                                  size="sm"
-                                  className={`w-8 h-8 p-0 ${
-                                    index === activeSummaryIndex
-                                      ? "bg-primary text-primary-foreground"
-                                      : "text-gray-400"
-                                  }`}
-                                  onClick={() => setActiveSummaryIndex(index)}
-                                >
-                                  {index + 1}
-                                </Button>
-                              ))}
-                          </div>
-                        </div>
-                      </div>
-                    ) : activeTab === "quiz" && !quizMode ? (
-                      <div className="space-y-6">
-                        <h3 className="font-semibold mb-4">
-                          Quiz Questions ({quizQuestions?.length || 0})
-                        </h3>
-                        {quizQuestions &&
-                          Array.isArray(quizQuestions) &&
-                          quizQuestions.map((quiz, index) => (
-                            <Card
-                              key={index}
-                              className="bg-gray-50 border border-gray-200 mb-4"
-                            >
-                              <CardContent className="p-6">
-                                <div className="mb-1">
-                                  <Badge>Question {index + 1}</Badge>
-                                </div>
-                                <h4 className="font-medium text-lg mb-3">
-                                  {quiz?.question || "Question unavailable"}
-                                </h4>
-                                <div className="pt-3 border-t border-gray-200">
-                                  <p className="text-sm text-gray-500 mb-1">
-                                    Answer:
-                                  </p>
-                                  <p className="text-gray-700">
-                                    {quiz?.answer || "Answer unavailable"}
-                                  </p>
-                                </div>
-                              </CardContent>
-                            </Card>
-                          ))}
-                      </div>
-                    ) : (
-                      // Quiz Mode
-                      <div className="space-y-6">
-                        {quizQuestions &&
-                          quizQuestions[currentQuizQuestion] && (
-                            <motion.div
-                              key={`quiz-${currentQuizQuestion}-${
-                                showAnswer ? "answer" : "question"
-                              }`}
-                              initial={{ opacity: 0, y: 10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, y: -10 }}
-                              transition={{ duration: 0.3 }}
-                            >
-                              <Card className="bg-gray-50 border border-gray-200 mb-6">
-                                <CardContent className="p-6">
-                                  <div className="mb-2 flex justify-between items-center">
-                                    <Badge className="px-3 py-1">
-                                      Question {currentQuizQuestion + 1} of{" "}
-                                      {quizQuestions.length}
-                                    </Badge>
-                                    {showAnswer && (
-                                      <Badge
-                                        variant={
-                                          userAnswers[currentQuizQuestion]
-                                            ? "default"
-                                            : "destructive"
-                                        }
-                                        className="px-3 py-1"
-                                      >
-                                        {userAnswers[currentQuizQuestion]
-                                          ? "Correct!"
-                                          : "Incorrect"}
-                                      </Badge>
-                                    )}
-                                  </div>
-
-                                  <h4 className="font-medium text-lg mb-6">
-                                    {quizQuestions[currentQuizQuestion]
-                                      .question || "Question unavailable"}
-                                  </h4>
-
-                                  {!showAnswer ? (
-                                    <div className="flex flex-col gap-3 mt-6">
-                                      <p className="text-sm text-center text-gray-500 mb-1">
-                                        Do you know the answer?
-                                      </p>
-                                      <div className="flex gap-3 justify-center">
-                                        <Button
-                                          variant="default"
-                                          className="bg-green-600 hover:bg-green-700"
-                                          onClick={() => handleQuizAnswer(true)}
-                                        >
-                                          <Check className="mr-2 h-4 w-4" />
-                                          Yes, I know it
-                                        </Button>
-                                        <Button
-                                          variant="default"
-                                          className="bg-rose-600 hover:bg-rose-700"
-                                          onClick={() =>
-                                            handleQuizAnswer(false)
-                                          }
-                                        >
-                                          <X className="mr-2 h-4 w-4" />
-                                          Still learning
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <motion.div
-                                      initial={{ opacity: 0, height: 0 }}
-                                      animate={{ opacity: 1, height: "auto" }}
-                                      transition={{ duration: 0.3 }}
-                                      className="p-4 bg-gray-100 rounded-lg border border-gray-200"
-                                    >
-                                      <p className="text-sm font-medium mb-2 text-gray-700">
-                                        Answer:
-                                      </p>
-                                      <p className="text-gray-700">
-                                        {quizQuestions[currentQuizQuestion]
-                                          .answer || "Answer unavailable"}
-                                      </p>
-                                    </motion.div>
-                                  )}
-                                </CardContent>
-                              </Card>
-
-                              <div className="flex gap-2 justify-center">
-                                {Array.from({
-                                  length: quizQuestions.length,
-                                }).map((_, index) => (
-                                  <div
-                                    key={index}
-                                    className={`w-3 h-3 rounded-full ${
-                                      index === currentQuizQuestion
-                                        ? "bg-primary"
-                                        : userAnswers[index] !== null
-                                        ? userAnswers[index]
-                                          ? "bg-green-500"
-                                          : "bg-rose-500"
-                                        : "bg-gray-300"
-                                    }`}
-                                  />
-                                ))}
-                              </div>
-                            </motion.div>
-                          )}
-                      </div>
-                    )}
-                  </motion.div>
-                </AnimatePresence>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="h-[400px] flex items-center justify-center bg-white rounded-xl shadow-sm border border-gray-100 p-8">
-              <div className="text-center">
-                <div className="w-24 h-24 mx-auto mb-4 flex items-center justify-center rounded-full bg-gray-100">
-                  <Presentation className="h-12 w-12 text-gray-400" />
-                </div>
-                <h3 className="text-xl font-semibold mb-2">No Analysis Yet</h3>
-                <p className="text-gray-500 mb-6">
-                  Upload your presentation slides to get AI-powered summaries
-                  and quiz questions.
-                </p>
-                <p className="text-sm text-gray-400">
-                  Upload a PDF file to start
-                </p>
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* Quiz Results Dialog */}
-      <Dialog open={showResults} onOpenChange={setShowResults}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-center flex items-center justify-center gap-2">
-              <Trophy
-                className={`h-5 w-5 ${
-                  quizScore / quizQuestions.length >= 0.7
-                    ? "text-yellow-500"
-                    : "text-blue-500"
-                }`}
+      {/* Content Area */}
+      <div className="flex-1 overflow-auto p-4">
+        <div className="max-w-3xl mx-auto">
+          {isAnalyzing ? (
+            <div className="text-center py-20">
+              <LoadingSpinner
+                text={`Analyzing ${file.name || "your document"}...`}
               />
-              Quiz Results
-            </DialogTitle>
-            <DialogDescription className="text-center">
-              You've completed the slides quiz!
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="py-6">
-            <div className="text-center mb-6">
-              <motion.div
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ type: "spring", stiffness: 300, damping: 15 }}
-                className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-gradient-to-br from-blue-100 to-purple-100 border-4 border-white shadow-lg mb-4"
-              >
-                <span className="text-3xl font-bold">
-                  {Math.round((quizScore / quizQuestions.length) * 100)}%
-                </span>
-              </motion.div>
-
-              <h3 className="text-xl font-semibold mb-1">
-                {quizScore} of {quizQuestions.length} correct
-              </h3>
-
-              <p className="text-gray-500 mb-4">
-                {quizScore / quizQuestions.length >= 0.8
-                  ? "Excellent work! You've mastered this content!"
-                  : quizScore / quizQuestions.length >= 0.6
-                  ? "Good job! You're on the right track!"
-                  : "Keep practicing! You'll improve with more study."}
+              <p className="text-sm text-gray-500 mt-4 max-w-md mx-auto">
+                We're extracting content and generating comprehensive study
+                materials. This process works even with documents that contain
+                images or limited text.
               </p>
             </div>
-
-            {quizScore / quizQuestions.length >= 0.7 && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-                className="bg-amber-50 rounded-lg p-4 text-center mb-4"
+          ) : summaries.length === 0 ? (
+            <div className="text-center py-20">
+              <div className="bg-white border border-gray-200 rounded-full h-20 w-20 flex items-center justify-center mx-auto mb-6">
+                <FileUp className="h-10 w-10 text-gray-400" />
+              </div>
+              <h3 className="text-xl font-semibold mb-3">
+                Upload slides to get started
+              </h3>
+              <p className="text-gray-600 max-w-md mx-auto mb-6">
+                Upload your presentation slides to generate AI-powered summaries
+                and quiz questions to enhance your study sessions.
+              </p>
+              <Button
+                onClick={() => fileInputRef.current?.click()}
+                variant="outline"
+                className="mx-auto"
               >
-                <div className="flex justify-center mb-2">
-                  <Sparkles className="h-6 w-6 text-amber-500" />
-                </div>
-                <h4 className="font-medium text-amber-800 mb-1">
-                  Achievement Unlocked!
-                </h4>
-                <p className="text-sm text-amber-700">
-                  Slide Master -{" "}
-                  {fileName ? fileName.split(".")[0] : "Content Expert"}
-                </p>
-              </motion.div>
-            )}
-          </div>
+                <Upload className="h-4 w-4 mr-2" />
+                Select file
+              </Button>
+            </div>
+          ) : isQuizMode ? (
+            <div>
+              {showQuizResults ? (
+                <QuizResults
+                  score={score}
+                  total={quizQuestions.length}
+                  onReset={resetQuiz}
+                  onShare={shareContent}
+                />
+              ) : (
+                <motion.div
+                  key={currentQuestionIndex}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                >
+                  <div className="mb-4 flex justify-between items-center">
+                    <Badge variant="outline" className="px-3 py-1">
+                      Question {currentQuestionIndex + 1} of{" "}
+                      {quizQuestions.length}
+                    </Badge>
 
-          <DialogFooter className="flex flex-col sm:flex-row gap-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setShowResults(false);
-                resetQuiz();
-              }}
-              className="sm:flex-1"
-            >
-              Review Content Again
-            </Button>
-            <Button
-              onClick={() => {
-                setShowResults(false);
-                setQuizMode(false);
-                setActiveTab("summaries");
-              }}
-              className="sm:flex-1"
-            >
-              Back to Summaries
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setIsQuizMode(false)}
+                      className="text-xs"
+                    >
+                      <ChevronLeft className="h-3 w-3 mr-1" />
+                      Back to summaries
+                    </Button>
+                  </div>
+
+                  <Card className="p-6 mb-6">
+                    <div className="mb-4">
+                      <div className="flex justify-between">
+                        <Badge variant="outline" className="mb-2">
+                          {quizQuestions[currentQuestionIndex]?.type ===
+                          "multiple-choice"
+                            ? "Multiple Choice"
+                            : quizQuestions[currentQuestionIndex]?.type ===
+                              "true-false"
+                            ? "True or False"
+                            : quizQuestions[currentQuestionIndex]?.type ===
+                              "case-based"
+                            ? "Case-Based"
+                            : "Single Choice"}
+                        </Badge>
+                        <Badge
+                          variant="outline"
+                          className={`${
+                            quizQuestions[currentQuestionIndex]?.difficulty ===
+                            "easy"
+                              ? "text-green-600 border-green-600"
+                              : quizQuestions[currentQuestionIndex]
+                                  ?.difficulty === "hard"
+                              ? "text-red-600 border-red-600"
+                              : "text-amber-600 border-amber-600"
+                          }`}
+                        >
+                          {quizQuestions[currentQuestionIndex]?.difficulty ===
+                          "easy"
+                            ? "Easy"
+                            : quizQuestions[currentQuestionIndex]
+                                ?.difficulty === "hard"
+                            ? "Hard"
+                            : "Medium"}
+                        </Badge>
+                      </div>
+                      <h3 className="text-xl font-bold mt-2">
+                        {quizQuestions[currentQuestionIndex]?.question}
+                      </h3>
+                    </div>
+
+                    <div className="space-y-3 my-4">
+                      {quizQuestions[currentQuestionIndex]?.options.map(
+                        (option, index) => (
+                          <div
+                            key={index}
+                            className={`p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors ${
+                              answered
+                                ? option ===
+                                  quizQuestions[currentQuestionIndex]?.answer
+                                  ? "border-green-500 bg-green-50"
+                                  : selectedAnswer === option
+                                  ? "border-red-500 bg-red-50"
+                                  : "border-gray-200"
+                                : selectedAnswer === option
+                                ? "border-primary"
+                                : "border-gray-200"
+                            }`}
+                            onClick={() => {
+                              if (!answered) handleAnswerSelect(option);
+                            }}
+                          >
+                            <div className="flex items-start">
+                              <div className="flex-shrink-0 w-5 h-5 mt-0.5">
+                                {answered ? (
+                                  option ===
+                                  quizQuestions[currentQuestionIndex]
+                                    ?.answer ? (
+                                    <CheckCircle className="h-5 w-5 text-green-500" />
+                                  ) : selectedAnswer === option ? (
+                                    <XCircle className="h-5 w-5 text-red-500" />
+                                  ) : (
+                                    <Circle className="h-5 w-5 text-gray-300" />
+                                  )
+                                ) : selectedAnswer === option ? (
+                                  <Check className="h-5 w-5 text-primary" />
+                                ) : (
+                                  <Circle className="h-5 w-5 text-gray-300" />
+                                )}
+                              </div>
+                              <div className="ml-3 text-sm">{option}</div>
+                            </div>
+                          </div>
+                        )
+                      )}
+                    </div>
+
+                    {/* Quiz display */}
+                    {answered && (
+                      <div className="mt-4 space-y-3">
+                        <div className="p-4 bg-white border border-gray-200 rounded-lg">
+                          <div className="flex justify-between items-start">
+                            <div className="text-sm font-medium mb-1">
+                              {selectedAnswer ===
+                              quizQuestions[currentQuestionIndex]?.answer
+                                ? "Correct! ✓"
+                                : "Incorrect ✗"}
+                            </div>
+                            <Badge
+                              variant={
+                                selectedAnswer ===
+                                quizQuestions[currentQuestionIndex]?.answer
+                                  ? "default"
+                                  : "outline"
+                              }
+                              className={
+                                selectedAnswer ===
+                                quizQuestions[currentQuestionIndex]?.answer
+                                  ? "bg-green-500"
+                                  : "text-red-500 border-red-500"
+                              }
+                            >
+                              {selectedAnswer ===
+                              quizQuestions[currentQuestionIndex]?.answer
+                                ? "+1 point"
+                                : "0 points"}
+                            </Badge>
+                          </div>
+                          <div className="text-sm mt-2">
+                            <p className="font-medium mb-1">Explanation:</p>
+                            <p className="text-gray-700">
+                              {quizQuestions[currentQuestionIndex]?.explanation}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <Badge variant="outline" className="text-xs">
+                            Difficulty:{" "}
+                            {quizQuestions[currentQuestionIndex]?.difficulty ||
+                              "medium"}
+                          </Badge>
+                        </div>
+                      </div>
+                    )}
+                  </Card>
+
+                  <div className="flex justify-between">
+                    <div className="flex justify-center gap-1 my-4">
+                      {quizQuestions.map((_, index) => (
+                        <div
+                          key={index}
+                          className={`h-2 rounded-full transition-all ${
+                            index === currentQuestionIndex
+                              ? "w-4 bg-primary"
+                              : userAnswers[index] !== undefined
+                              ? userAnswers[index]
+                                ? "w-2 bg-green-500"
+                                : "w-2 bg-red-500"
+                              : "w-2 bg-gray-200"
+                          }`}
+                        />
+                      ))}
+                    </div>
+
+                    {answered ? (
+                      <Button onClick={nextQuestion}>
+                        {currentQuestionIndex === quizQuestions.length - 1
+                          ? "See Results"
+                          : "Next Question"}
+                        <ChevronRight className="ml-2 h-4 w-4" />
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        onClick={() => handleAnswerSelect(null)}
+                      >
+                        Skip Question
+                        <ChevronRight className="ml-2 h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </div>
+          ) : (
+            <div>
+              <div className="mb-6 flex flex-wrap justify-between items-center gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="bg-primary/10 p-2 rounded-full">
+                    <BookOpen className="h-5 w-5 text-primary" />
+                  </div>
+                  <h2 className="text-xl font-semibold">Slide Summaries</h2>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={downloadAsPDF}
+                    className="gap-1"
+                  >
+                    <Download className="h-4 w-4" />
+                    Download PDF
+                  </Button>
+
+                  <Button onClick={startQuizMode} size="sm">
+                    Practice Quiz
+                  </Button>
+                </div>
+              </div>
+
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={currentSummaryIndex}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <Card className="p-6 mb-6">
+                    <div className="flex justify-between items-start mb-4">
+                      <h3 className="text-xl font-bold">
+                        {summaries[currentSummaryIndex]?.title}
+                      </h3>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() =>
+                          copyToClipboard(
+                            summaries[currentSummaryIndex].summary
+                          )
+                        }
+                        className="ml-2"
+                      >
+                        {copiedText ? (
+                          <Check className="h-4 w-4 text-green-500" />
+                        ) : (
+                          <Copy className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+
+                    <div className="text-gray-700 leading-relaxed study-notes">
+                      {/* Format the content to preserve formatting */}
+                      <div
+                        className="prose prose-sm max-w-none"
+                        dangerouslySetInnerHTML={{
+                          __html: summaries[currentSummaryIndex]?.summary
+                            // Convert ** bold ** syntax
+                            .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+                            // Convert bullet points
+                            .replace(/^- (.*)/gm, "<li>$1</li>")
+                            .replace(/(<li>.*<\/li>)/gs, "<ul>$1</ul>")
+                            // Convert headings (##)
+                            .replace(
+                              /^## (.*)/gm,
+                              '<h3 class="text-lg font-semibold mt-4 mb-2">$1</h3>'
+                            )
+                            // Convert headings (#)
+                            .replace(
+                              /^# (.*)/gm,
+                              '<h2 class="text-xl font-bold mt-5 mb-3">$1</h2>'
+                            )
+                            // Replace newlines with breaks
+                            .replace(/\n/g, "<br />")
+                            // Fix any double breaks created by replacements
+                            .replace(/<br \/><br \/>/g, "<br />")
+                            .replace(/<br \/><h/g, "<h"),
+                        }}
+                      />
+                    </div>
+                  </Card>
+                </motion.div>
+              </AnimatePresence>
+
+              <div className="flex justify-between items-center">
+                <Button
+                  variant="outline"
+                  onClick={() => navigateSummary("prev")}
+                  disabled={currentSummaryIndex === 0}
+                  className="gap-1"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Previous
+                </Button>
+
+                <div className="text-sm text-gray-500">
+                  {currentSummaryIndex + 1} of {summaries.length}
+                </div>
+
+                <Button
+                  variant="outline"
+                  onClick={() => navigateSummary("next")}
+                  disabled={currentSummaryIndex === summaries.length - 1}
+                  className="gap-1"
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

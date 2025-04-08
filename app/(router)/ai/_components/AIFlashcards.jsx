@@ -1,1010 +1,838 @@
 "use client";
-import React, { useState, useRef } from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent } from "@/components/ui/card";
-import {
-  Loader2,
-  Download,
-  Share2,
-  LibraryIcon,
-  CheckCircle,
-  Trophy,
-  Brain,
-  ArrowRight,
-  Sparkles,
-  ThumbsUp,
-} from "lucide-react";
+import { Card } from "@/components/ui/card";
+import { useToast } from "@/components/ui/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { jsPDF } from "jspdf";
-import { useToast } from "@/components/ui/use-toast";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import confetti from "canvas-confetti";
-
-const topics = [
-  "Anatomy",
-  "Physiology",
-  "Cell Biology",
-  "Genetics",
-  "Immunology",
-  "Microbiology",
-  "Neuroscience",
-  "Pathology",
-  "Pharmacology",
-  "Biochemistry",
-];
+  Search,
+  Book,
+  BookOpen,
+  Download,
+  Share2,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
+  Check,
+  X,
+  Copy,
+  ArrowRight,
+  CheckCircle,
+  ThumbsUp,
+  BrainCircuit,
+  XCircle,
+  Circle,
+  Badge,
+  AlertCircle,
+} from "lucide-react";
+import jsPDF from "jspdf";
+import LoadingSpinner from "./LoadingSpinner";
 
 export default function AIFlashcards() {
   const [topic, setTopic] = useState("");
-  const [customTopic, setCustomTopic] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [numCards, setNumCards] = useState(5);
+  const [isLoading, setIsLoading] = useState(false);
   const [flashcards, setFlashcards] = useState([]);
-  const [currentCard, setCurrentCard] = useState(0);
-  const [flipped, setFlipped] = useState(false);
-  const [generationComplete, setGenerationComplete] = useState(false);
-
-  // Quiz mode state
+  const [currentCardIndex, setCurrentCardIndex] = useState(0);
+  const [isFlipped, setIsFlipped] = useState(false);
   const [quizMode, setQuizMode] = useState(false);
-  const [quizScore, setQuizScore] = useState(0);
+  const [correctAnswers, setCorrectAnswers] = useState(0);
   const [answeredCards, setAnsweredCards] = useState([]);
-  const [showQuizResult, setShowQuizResult] = useState(false);
-  const [currentStreak, setCurrentStreak] = useState(0);
-  const [bestStreak, setBestStreak] = useState(0);
-  const [userKnows, setUserKnows] = useState(false);
-  const [confettiTriggered, setConfettiTriggered] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+  const [copiedText, setCopiedText] = useState(false);
+  const [quizQuestions, setQuizQuestions] = useState([]);
+  const [selectedAnswer, setSelectedAnswer] = useState(null);
+  const [answered, setAnswered] = useState(false);
 
-  const confettiCanvasRef = useRef(null);
   const { toast } = useToast();
 
-  // Sample flashcards data for fallback
-  const getSampleFlashcards = (selectedTopic) => [
+  // Sample flashcards for fallback
+  const getSampleFlashcards = () => [
     {
-      question: "What are the four chambers of the human heart?",
-      answer:
-        "The four chambers of the human heart are the right atrium, right ventricle, left atrium, and left ventricle.",
+      question: "What is the primary function of mitochondria in cells?",
+      answer: "Generate ATP through cellular respiration",
     },
     {
-      question: "What is the function of mitochondria in a cell?",
-      answer:
-        "Mitochondria are the powerhouses of the cell, responsible for generating energy in the form of ATP through cellular respiration.",
+      question: "Describe the process of DNA replication.",
+      answer: "Semi-conservative copying of DNA during cell division",
     },
     {
-      question: "Name the four nitrogenous bases found in DNA.",
-      answer:
-        "The four nitrogenous bases in DNA are Adenine (A), Guanine (G), Cytosine (C), and Thymine (T).",
+      question: "What are the four main types of tissue in the human body?",
+      answer: "Epithelial, connective, muscle, and nervous tissue",
     },
     {
-      question: "What is the difference between innate and adaptive immunity?",
-      answer:
-        "Innate immunity is the body's first line of defense and responds quickly but non-specifically to pathogens. Adaptive immunity is specific to particular pathogens, develops more slowly, and has memory.",
+      question:
+        "What is the function of white blood cells in the immune system?",
+      answer: "Protect against pathogens and foreign materials",
     },
     {
-      question: "What is homeostasis?",
-      answer:
-        "Homeostasis is the process by which organisms maintain stable internal conditions necessary for survival, despite changes in the external environment.",
+      question: "Explain the concept of homeostasis.",
+      answer: "Maintenance of stable internal conditions",
     },
   ];
 
+  // Format answer for display
+  const formatAnswer = (answer) => {
+    if (!answer) return "";
+
+    // Comprehensive cleaning of formatting characters
+    return answer
+      .replace(/[•*\-+]/g, "") // Remove bullet points, asterisks, and other list markers
+      .replace(/\\n|\\r|\n|\r/g, " ") // Replace all newlines
+      .replace(/\s{2,}/g, " ") // Replace multiple spaces with a single space
+      .replace(/^\s+|\s+$/g, "") // Trim whitespace from start and end
+      .replace(/^[0-9]+\.\s*/g, "") // Remove numbered list formatting
+      .replace(/^[#]+\s*/g, "") // Remove markdown heading formatting
+      .replace(/`/g, "") // Remove code ticks
+      .trim();
+  };
+
+  // Handle flashcard generation
   const handleGenerate = async () => {
-    setLoading(true);
-    setGenerationComplete(false);
-    setQuizMode(false);
-    setQuizScore(0);
-    setAnsweredCards([]);
-    setShowQuizResult(false);
-    setCurrentStreak(0);
-    setBestStreak(0);
-    setConfettiTriggered(false);
-
-    try {
-      const selectedTopic = topic === "custom" ? customTopic : topic;
-
-      try {
-        // Prepare the request
-        const response = await fetch("/api/gemini/flashcards", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            topic: selectedTopic,
-            numCards: 5,
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error(`API error: ${response.status}`);
-        }
-
-        const data = await response.json();
-
-        // Check if the API returned actual flashcards with content
-        if (
-          data.flashcards &&
-          Array.isArray(data.flashcards) &&
-          data.flashcards.length > 0
-        ) {
-          // Validate each flashcard has question and answer fields
-          const validFlashcards = data.flashcards.filter(
-            (card) =>
-              card &&
-              card.question &&
-              card.question.trim() !== "" &&
-              card.answer &&
-              card.answer.trim() !== ""
-          );
-
-          if (validFlashcards.length > 0) {
-            setFlashcards(validFlashcards);
-            setCurrentCard(0);
-            setFlipped(false);
-            setGenerationComplete(true);
-            setAnsweredCards(new Array(validFlashcards.length).fill(false));
-
-            toast({
-              title: "Flashcards Generated",
-              description: `Created ${validFlashcards.length} flashcards about ${selectedTopic}`,
-            });
-            return; // Success - exit early
-          }
-        }
-
-        // If we get here, we got a response but no valid flashcards
-        throw new Error("No valid flashcards were generated");
-      } catch (apiError) {
-        console.error("API Error:", apiError);
-
-        // Get topic-specific sample cards if possible
-        const sampleCards = getSampleFlashcardsForTopic(selectedTopic);
-        setFlashcards(sampleCards);
-        setCurrentCard(0);
-        setFlipped(false);
-        setGenerationComplete(true);
-        setAnsweredCards(new Array(sampleCards.length).fill(false));
-
-        toast({
-          title: "Using Sample Flashcards",
-          description:
-            "We couldn't connect to our AI service. Using sample flashcards instead.",
-          variant: "warning",
-        });
-      }
-    } catch (error) {
-      console.error("Error generating flashcards:", error);
+    if (!topic.trim()) {
       toast({
-        title: "Error",
-        description:
-          error.message || "Failed to generate flashcards. Please try again.",
+        title: "Topic Required",
+        description: "Please enter a topic to generate flashcards.",
         variant: "destructive",
       });
-    } finally {
-      setLoading(false);
+      return;
     }
-  };
 
-  // Enhanced sample flashcards with topic-specific options
-  const getSampleFlashcardsForTopic = (selectedTopic) => {
-    // Convert topic to lowercase for easier matching
-    const lowercaseTopic = selectedTopic.toLowerCase();
+    setIsLoading(true);
+    setFlashcards([]);
+    setCurrentCardIndex(0);
+    setIsFlipped(false);
+    setQuizMode(false);
+    setAnsweredCards([]);
+    setCorrectAnswers(0);
+    setShowResults(false);
+    setQuizQuestions([]);
+    setSelectedAnswer(null);
+    setAnswered(false);
 
-    // Topic-specific flashcard sets
-    if (lowercaseTopic.includes("anatomy") || lowercaseTopic.includes("body")) {
-      return [
-        {
-          question: "What are the four chambers of the human heart?",
-          answer:
-            "The four chambers are right atrium, right ventricle, left atrium, and left ventricle.",
-        },
-        {
-          question: "Which bones make up the axial skeleton?",
-          answer:
-            "The axial skeleton consists of the skull, vertebral column, ribs, and sternum.",
-        },
-        {
-          question: "What are the three main types of muscle tissue?",
-          answer:
-            "The three types are skeletal muscle, cardiac muscle, and smooth muscle.",
-        },
-        {
-          question: "Name the lobes of the human brain.",
-          answer:
-            "The brain has four major lobes: frontal, parietal, temporal, and occipital.",
-        },
-        {
-          question: "What is the largest organ in the human body?",
-          answer: "The skin is the largest organ in the human body.",
-        },
-      ];
-    } else if (
-      lowercaseTopic.includes("cell") ||
-      lowercaseTopic.includes("molecular")
-    ) {
-      return [
-        {
-          question: "What is the function of mitochondria in a cell?",
-          answer:
-            "Mitochondria are the powerhouses of the cell, responsible for generating energy in the form of ATP through cellular respiration.",
-        },
-        {
-          question: "What is the role of ribosomes in a cell?",
-          answer:
-            "Ribosomes are the sites of protein synthesis, where mRNA is translated into proteins.",
-        },
-        {
-          question: "Describe the structure of the cell membrane.",
-          answer:
-            "The cell membrane is a phospholipid bilayer with embedded proteins that controls what enters and exits the cell.",
-        },
-        {
-          question:
-            "What is the difference between prokaryotic and eukaryotic cells?",
-          answer:
-            "Prokaryotic cells lack membrane-bound organelles and a nucleus, while eukaryotic cells have a nucleus and various membrane-bound organelles.",
-        },
-        {
-          question: "What happens during the process of mitosis?",
-          answer:
-            "Mitosis is cell division that results in two identical daughter cells, involving prophase, metaphase, anaphase, and telophase stages.",
-        },
-      ];
-    } else if (
-      lowercaseTopic.includes("genetics") ||
-      lowercaseTopic.includes("dna") ||
-      lowercaseTopic.includes("gene")
-    ) {
-      return [
-        {
-          question: "Name the four nitrogenous bases found in DNA.",
-          answer:
-            "The four nitrogenous bases in DNA are Adenine (A), Guanine (G), Cytosine (C), and Thymine (T).",
-        },
-        {
-          question: "What is the central dogma of molecular biology?",
-          answer:
-            "The central dogma states that genetic information flows from DNA to RNA to protein (DNA → RNA → Protein).",
-        },
-        {
-          question: "What is a gene?",
-          answer:
-            "A gene is a segment of DNA that contains the instructions for making a specific protein or RNA molecule.",
-        },
-        {
-          question: "Describe the process of DNA replication.",
-          answer:
-            "DNA replication is semi-conservative: the double helix unwinds, each strand serves as a template, and complementary nucleotides pair up to form two identical DNA molecules.",
-        },
-        {
-          question: "What are the differences between mitosis and meiosis?",
-          answer:
-            "Mitosis produces two genetically identical diploid cells, while meiosis produces four genetically diverse haploid cells used in sexual reproduction.",
-        },
-      ];
-    } else if (
-      lowercaseTopic.includes("immune") ||
-      lowercaseTopic.includes("immunity")
-    ) {
-      return [
-        {
-          question:
-            "What is the difference between innate and adaptive immunity?",
-          answer:
-            "Innate immunity is the body's first line of defense and responds quickly but non-specifically to pathogens. Adaptive immunity is specific to particular pathogens, develops more slowly, and has memory.",
-        },
-        {
-          question: "What are antibodies and what is their function?",
-          answer:
-            "Antibodies (immunoglobulins) are Y-shaped proteins produced by B cells that bind to specific antigens to neutralize or mark them for destruction.",
-        },
-        {
-          question: "What are the five classes of antibodies?",
-          answer:
-            "The five classes of antibodies are IgG, IgM, IgA, IgD, and IgE, each with different functions and locations in the body.",
-        },
-        {
-          question: "What is the role of T cells in the immune system?",
-          answer:
-            "T cells are involved in cell-mediated immunity. Helper T cells activate other immune cells, while cytotoxic T cells directly kill infected or cancerous cells.",
-        },
-        {
-          question: "What is inflammation and why is it important?",
-          answer:
-            "Inflammation is a protective response to tissue damage or infection. It involves increased blood flow, capillary permeability, and migration of immune cells to eliminate the cause and repair damaged tissue.",
-        },
-      ];
-    } else {
-      // Default general biology flashcards
-      return getSampleFlashcards();
-    }
-  };
-
-  const downloadAsPDF = () => {
-    const doc = new jsPDF();
-    let y = 20;
-
-    doc.setFontSize(22);
-    doc.text(`Flashcards: ${topic === "custom" ? customTopic : topic}`, 20, y);
-    y += 15;
-
-    doc.setFontSize(12);
-    flashcards.forEach((card, index) => {
-      doc.setFont(undefined, "bold");
-      doc.text(`Card ${index + 1} - Question:`, 20, y);
-      y += 10;
-
-      doc.setFont(undefined, "normal");
-      const questionLines = doc.splitTextToSize(card.question, 170);
-      doc.text(questionLines, 20, y);
-      y += questionLines.length * 7;
-
-      doc.setFont(undefined, "bold");
-      doc.text(`Card ${index + 1} - Answer:`, 20, y);
-      y += 10;
-
-      doc.setFont(undefined, "normal");
-      const answerLines = doc.splitTextToSize(card.answer, 170);
-      doc.text(answerLines, 20, y);
-      y += answerLines.length * 7 + 10;
-
-      if (y > 250) {
-        doc.addPage();
-        y = 20;
-      }
-    });
-
-    doc.save(
-      `obstutor-flashcards-${topic === "custom" ? customTopic : topic}.pdf`
-    );
-
-    toast({
-      title: "PDF Downloaded",
-      description: "Your flashcards have been downloaded as a PDF file.",
-    });
-  };
-
-  const shareFlashcards = async () => {
     try {
-      if (navigator.share) {
-        await navigator.share({
-          title: `Obstutor Flashcards: ${
-            topic === "custom" ? customTopic : topic
-          }`,
-          text: "Check out these flashcards I created with Obstutor AI!",
-        });
+      const response = await fetch("/api/gemini/flashcards", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          topic: topic.trim(),
+          numCards: parseInt(numCards) || 5,
+        }),
+      });
 
+      const data = await response.json();
+
+      if (data.error) {
+        console.error("API Error:", data.error);
         toast({
-          title: "Shared Successfully",
-          description: "Your flashcards have been shared.",
+          title: "Error Generating Flashcards",
+          description:
+            "There was an error generating your flashcards. Using sample flashcards instead.",
+          variant: "destructive",
+        });
+        setFlashcards(getSampleFlashcards());
+      } else if (data.flashcards && data.flashcards.length > 0) {
+        setFlashcards(data.flashcards);
+        toast({
+          title: "Flashcards Generated",
+          description: `Created ${data.flashcards.length} flashcards about ${topic}`,
         });
       } else {
-        // Fallback for browsers that don't support the Web Share API
-        await navigator.clipboard.writeText(
-          `I created flashcards on "${
-            topic === "custom" ? customTopic : topic
-          }" with Obstutor AI!`
-        );
-
         toast({
-          title: "Link Copied",
-          description: "Share link copied to clipboard!",
+          title: "No Flashcards Generated",
+          description: "Try a different topic or check your connection.",
+          variant: "destructive",
         });
+        setFlashcards(getSampleFlashcards());
       }
     } catch (error) {
-      console.error("Error sharing flashcards:", error);
+      console.error("Fetch error:", error);
       toast({
-        title: "Error",
-        description: "Failed to share flashcards. Please try again.",
+        title: "Connection Error",
+        description:
+          "Failed to connect to the server. Using sample flashcards instead.",
+        variant: "destructive",
+      });
+      setFlashcards(getSampleFlashcards());
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Create and download a PDF of flashcards
+  const downloadAsPDF = () => {
+    if (flashcards.length === 0) return;
+
+    try {
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 20;
+      const contentWidth = pageWidth - margin * 2;
+
+      // Title
+      doc.setFontSize(20);
+      doc.text(`Flashcards: ${topic}`, margin, 20);
+
+      let y = 40;
+
+      flashcards.forEach((card, index) => {
+        // Add new page if needed
+        if (y > 250) {
+          doc.addPage();
+          y = 20;
+        }
+
+        // Question
+        doc.setFontSize(14);
+        doc.setFont(undefined, "bold");
+        doc.text(`Card ${index + 1}: Question`, margin, y);
+        y += 10;
+
+        doc.setFontSize(12);
+        doc.setFont(undefined, "normal");
+        const questionLines = doc.splitTextToSize(card.question, contentWidth);
+        doc.text(questionLines, margin, y);
+        y += questionLines.length * 7 + 5;
+
+        // Answer
+        doc.setFontSize(14);
+        doc.setFont(undefined, "bold");
+        doc.text("Answer:", margin, y);
+        y += 10;
+
+        doc.setFontSize(12);
+        doc.setFont(undefined, "normal");
+        const answerLines = doc.splitTextToSize(card.answer, contentWidth);
+        doc.text(answerLines, margin, y);
+        y += answerLines.length * 7 + 20;
+      });
+
+      doc.save(`${topic.replace(/\s+/g, "-").toLowerCase()}-flashcards.pdf`);
+
+      toast({
+        title: "PDF Downloaded",
+        description: "Your flashcards have been saved as a PDF",
+      });
+    } catch (error) {
+      console.error("PDF creation error:", error);
+      toast({
+        title: "Download Failed",
+        description: "There was a problem creating your PDF. Please try again.",
         variant: "destructive",
       });
     }
   };
 
+  // Share flashcards
+  const shareFlashcards = async () => {
+    if (flashcards.length === 0) return;
+
+    try {
+      const text = flashcards
+        .map(
+          (card, index) =>
+            `Card ${index + 1}:\nQuestion: ${card.question}\nAnswer: ${
+              card.answer
+            }\n`
+        )
+        .join("\n");
+
+      await navigator.clipboard.writeText(text);
+      setCopiedText(true);
+      setTimeout(() => setCopiedText(false), 2000);
+
+      toast({
+        title: "Copied to Clipboard",
+        description: "Flashcards have been copied to your clipboard",
+      });
+    } catch (error) {
+      console.error("Share error:", error);
+      toast({
+        title: "Share Failed",
+        description: "Failed to copy flashcards to clipboard",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Navigate to the next card
   const nextCard = () => {
-    if (currentCard < flashcards.length - 1) {
-      setCurrentCard(currentCard + 1);
-      setFlipped(false);
+    if (currentCardIndex < flashcards.length - 1) {
+      setIsFlipped(false);
+      setCurrentCardIndex((prevIndex) => prevIndex + 1);
     }
   };
 
+  // Navigate to the previous card
   const prevCard = () => {
-    if (currentCard > 0) {
-      setCurrentCard(currentCard - 1);
-      setFlipped(false);
+    if (currentCardIndex > 0) {
+      setIsFlipped(false);
+      setCurrentCardIndex((prevIndex) => prevIndex - 1);
     }
   };
 
+  // Generate quiz questions from flashcards
+  const generateQuizQuestions = () => {
+    if (flashcards.length === 0) return [];
+
+    return flashcards.map((card, index) => {
+      // Determine the type of question (variety of formats)
+      const questionType =
+        index % 3 === 0
+          ? "multiple-choice"
+          : index % 3 === 1
+          ? "true-false"
+          : "single-choice";
+
+      let options = [];
+      let correctAnswer = "";
+
+      switch (questionType) {
+        case "multiple-choice":
+          // Create plausible options from the answer
+          const answer = card.answer;
+          const mainAnswer = answer.split(".")[0]; // Get first sentence as correct answer
+          correctAnswer = mainAnswer;
+
+          // Generate 3 other plausible options
+          options = [
+            mainAnswer,
+            `A somewhat related but incorrect statement about ${topic}.`,
+            `A common misconception about ${card.question.split("?")[0]}.`,
+            `An entirely unrelated fact about ${topic}.`,
+          ];
+
+          // Shuffle options
+          options = shuffleArray(options);
+          break;
+
+        case "true-false":
+          correctAnswer = "True";
+          options = ["True", "False"];
+          break;
+
+        case "single-choice":
+          // Extract key term from the answer
+          const terms =
+            card.answer.match(/\b[A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})*\b/g) ||
+            [];
+          correctAnswer =
+            terms.length > 0
+              ? terms[0]
+              : card.answer.split(" ").slice(0, 2).join(" ");
+
+          // Generate options including the correct one
+          options = [
+            correctAnswer,
+            `Alternative term 1 related to ${topic}`,
+            `Alternative term 2 related to ${topic}`,
+            `Alternative term 3 related to ${topic}`,
+          ];
+
+          // Shuffle options
+          options = shuffleArray(options);
+          break;
+      }
+
+      return {
+        question: card.question,
+        options: options,
+        correctAnswer: correctAnswer,
+        type: questionType,
+        explanation: card.answer,
+      };
+    });
+  };
+
+  // Shuffle array helper function
+  const shuffleArray = (array) => {
+    const newArray = [...array];
+    for (let i = newArray.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+    }
+    return newArray;
+  };
+
+  // Start quiz mode with multiple choice questions
   const startQuizMode = () => {
+    if (flashcards.length === 0) return;
+
+    const generatedQuestions = generateQuizQuestions();
+    setQuizQuestions(generatedQuestions);
     setQuizMode(true);
-    setQuizScore(0);
-    setAnsweredCards(new Array(flashcards.length).fill(false));
-    setCurrentCard(0);
-    setFlipped(false);
-    setCurrentStreak(0);
-    setBestStreak(0);
-    setUserKnows(false);
+    setCurrentCardIndex(0);
+    setIsFlipped(false);
+    setAnsweredCards(new Array(flashcards.length).fill(null));
+    setCorrectAnswers(0);
+    setShowResults(false);
+    setSelectedAnswer(null);
+    setAnswered(false);
 
     toast({
-      title: "Quiz Mode Activated!",
-      description: "Test your knowledge by marking cards as Known or Unknown.",
+      title: "Quiz Mode Activated",
+      description: "Test your knowledge with multiple choice questions",
     });
   };
 
-  const handleQuizAnswer = (knows) => {
-    if (answeredCards[currentCard]) return; // Already answered this card
+  // Handle selecting a quiz answer
+  const handleAnswerSelect = (option) => {
+    setSelectedAnswer(option);
+    setAnswered(true);
 
-    // Update the answered cards array
+    const currentQuestion = quizQuestions[currentCardIndex];
+    const isCorrect = option === currentQuestion.correctAnswer;
+
+    if (isCorrect) {
+      setCorrectAnswers((prev) => prev + 1);
+    }
+
     const newAnsweredCards = [...answeredCards];
-    newAnsweredCards[currentCard] = true;
+    newAnsweredCards[currentCardIndex] = isCorrect;
     setAnsweredCards(newAnsweredCards);
+  };
 
-    setUserKnows(knows);
-
-    // Update the score
-    if (knows) {
-      setQuizScore((prevScore) => prevScore + 1);
-      setCurrentStreak((prev) => prev + 1);
-      if (currentStreak + 1 > bestStreak) {
-        setBestStreak(currentStreak + 1);
-      }
+  // Move to next question
+  const nextQuestion = () => {
+    if (currentCardIndex < quizQuestions.length - 1) {
+      setCurrentCardIndex((prevIndex) => prevIndex + 1);
+      setSelectedAnswer(null);
+      setAnswered(false);
+      setIsFlipped(false);
     } else {
-      setCurrentStreak(0);
-    }
-
-    // Check if all cards have been answered
-    const allAnswered = newAnsweredCards.every((card) => card);
-    if (allAnswered) {
-      // Show results after a short delay
-      setTimeout(() => {
-        setShowQuizResult(true);
-        if (quizScore / flashcards.length >= 0.8) {
-          triggerConfetti();
-        }
-      }, 1000);
-    } else {
-      // Move to next unanswered card after a delay
-      setTimeout(() => {
-        let nextCard = currentCard;
-        for (let i = 1; i <= flashcards.length; i++) {
-          const index = (currentCard + i) % flashcards.length;
-          if (!newAnsweredCards[index]) {
-            nextCard = index;
-            break;
-          }
-        }
-        setCurrentCard(nextCard);
-        setFlipped(false);
-        setUserKnows(false);
-      }, 1500);
+      // Show results when all questions are answered
+      setShowResults(true);
     }
   };
 
-  const triggerConfetti = () => {
-    if (confettiTriggered) return;
-
-    const canvas = document.createElement("canvas");
-    canvas.style.position = "fixed";
-    canvas.style.top = "0";
-    canvas.style.left = "0";
-    canvas.style.width = "100vw";
-    canvas.style.height = "100vh";
-    canvas.style.pointerEvents = "none";
-    canvas.style.zIndex = "9999";
-    document.body.appendChild(canvas);
-
-    const myConfetti = confetti.create(canvas, { resize: true });
-
-    myConfetti({
-      particleCount: 150,
-      spread: 160,
-      origin: { y: 0.6 },
-      gravity: 0.8,
-    });
-
-    // Clean up after 2.5 seconds
-    setTimeout(() => {
-      document.body.removeChild(canvas);
-    }, 2500);
-
-    setConfettiTriggered(true);
-  };
-
+  // Reset the quiz
   const resetQuiz = () => {
     setQuizMode(false);
-    setQuizScore(0);
-    setAnsweredCards(new Array(flashcards.length).fill(false));
-    setShowQuizResult(false);
-    setCurrentStreak(0);
-    setBestStreak(0);
-    setUserKnows(false);
-    setConfettiTriggered(false);
+    setCurrentCardIndex(0);
+    setIsFlipped(false);
+    setAnsweredCards([]);
+    setCorrectAnswers(0);
+    setShowResults(false);
+    setSelectedAnswer(null);
+    setAnswered(false);
   };
 
+  // Suggested biology/medical topics
+  const topicSuggestions = [
+    "Cell Biology",
+    "Human Anatomy",
+    "Neuroscience",
+    "Immunology",
+    "Genetics",
+    "Microbiology",
+    "Physiology",
+    "Pharmacology",
+  ];
+
   return (
-    <div className="p-6">
-      <div className="flex flex-col lg:flex-row gap-6">
-        {/* Left panel - Generator */}
-        <div className="lg:w-1/3 space-y-6">
-          <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-            <div className="flex items-center gap-2 mb-4">
-              <LibraryIcon className="h-5 w-5 text-primary" />
-              <h2 className="text-xl font-semibold">Flashcard Generator</h2>
-            </div>
-
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="topic">Select Topic</Label>
-                <Select
-                  value={topic}
-                  onValueChange={(value) => setTopic(value)}
-                >
-                  <SelectTrigger id="topic" className="w-full">
-                    <SelectValue placeholder="Select a topic" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {topics.map((t) => (
-                      <SelectItem key={t} value={t}>
-                        {t}
-                      </SelectItem>
-                    ))}
-                    <SelectItem value="custom">Custom Topic</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {topic === "custom" && (
-                <div className="space-y-2">
-                  <Label htmlFor="customTopic">Enter Custom Topic</Label>
-                  <Input
-                    id="customTopic"
-                    placeholder="e.g., Cardiovascular System"
-                    value={customTopic}
-                    onChange={(e) => setCustomTopic(e.target.value)}
-                  />
-                </div>
-              )}
-
-              <Button
-                onClick={handleGenerate}
-                disabled={
-                  loading || !topic || (topic === "custom" && !customTopic)
-                }
-                className="w-full"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  "Generate Flashcards"
-                )}
-              </Button>
-
-              {!flashcards.length && (
-                <div className="mt-6 pt-4 border-t border-dashed border-gray-200">
-                  <p className="text-sm text-gray-500 mb-2">Popular topics:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      "Cellular Respiration",
-                      "DNA Replication",
-                      "Immune System",
-                      "Neurotransmitters",
-                      "Blood Types",
-                    ].map((suggestion) => (
-                      <Badge
-                        key={suggestion}
-                        variant="outline"
-                        className="cursor-pointer hover:bg-primary/10"
-                        onClick={() => {
-                          setTopic("custom");
-                          setCustomTopic(suggestion);
-                        }}
-                      >
-                        {suggestion}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
+    <div className="min-h-full flex flex-col">
+      {/* Input Panel */}
+      <div className="p-4 border-b bg-white">
+        <div className="max-w-3xl mx-auto flex flex-wrap gap-4 items-end">
+          <div className="flex-1">
+            <Label htmlFor="topic" className="mb-2 block text-sm">
+              Topic
+            </Label>
+            <div className="relative">
+              <Input
+                id="topic"
+                placeholder="e.g., Cell Biology, Genetics, Anatomy..."
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                className="pr-10"
+              />
+              <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
             </div>
           </div>
 
-          {generationComplete && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-white rounded-xl shadow-sm p-6 border border-gray-100"
-            >
-              <h3 className="font-semibold mb-3 flex items-center gap-2">
-                <CheckCircle className="h-5 w-5 text-green-500" />
-                <span>Generation Complete</span>
+          <div className="flex-shrink-0">
+            <Label htmlFor="numCards" className="mb-2 block text-sm">
+              Cards
+            </Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="numCards"
+                type="number"
+                min="1"
+                max="20"
+                value={numCards}
+                onChange={(e) =>
+                  setNumCards(
+                    Math.min(20, Math.max(1, parseInt(e.target.value) || 5))
+                  )
+                }
+                className="w-16"
+              />
+
+              <Button
+                onClick={handleGenerate}
+                disabled={isLoading || !topic.trim()}
+                className="min-w-[90px]"
+              >
+                {isLoading ? (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                    Loading
+                  </>
+                ) : (
+                  <>
+                    <ArrowRight className="mr-2 h-4 w-4" />
+                    Generate
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Content Area */}
+      <div className="flex-1 overflow-auto">
+        {isLoading ? (
+          <LoadingSpinner text="Generating flashcards..." />
+        ) : flashcards.length === 0 ? (
+          <div className="h-full flex items-center justify-center p-8 text-center">
+            <div>
+              <BookOpen className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+              <h3 className="text-lg font-medium text-gray-700 mb-2">
+                Generate flashcards to get started
               </h3>
-              <p className="text-sm text-gray-600 mb-4">
-                {flashcards.length} flashcards created about{" "}
-                {topic === "custom" ? customTopic : topic}.
+              <p className="text-gray-500 max-w-md mx-auto">
+                Enter a biology or medical topic and specify how many cards
+                you'd like to create.
+              </p>
+            </div>
+          </div>
+        ) : quizMode && showResults ? (
+          <div className="h-full flex items-center justify-center p-6">
+            <div className="text-center max-w-md">
+              <div className="inline-flex items-center justify-center h-20 w-20 rounded-full bg-white border border-gray-200 mb-4">
+                {correctAnswers > flashcards.length / 2 ? (
+                  <CheckCircle className="h-10 w-10 text-primary" />
+                ) : (
+                  <AlertCircle className="h-10 w-10 text-amber-500" />
+                )}
+              </div>
+
+              <h2 className="text-2xl font-bold mb-2">Quiz Complete!</h2>
+
+              <p className="text-lg mb-6">
+                Your Score: {correctAnswers} of {flashcards.length}
               </p>
 
-              {!quizMode ? (
-                <div className="flex flex-col gap-2">
-                  <Button
-                    onClick={startQuizMode}
-                    className="w-full flex items-center gap-2"
-                    variant="default"
-                  >
-                    <Brain className="h-4 w-4" />
-                    Start Quiz Mode
-                  </Button>
-                  <div className="flex flex-col sm:flex-row gap-2">
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <Button
+                  onClick={resetQuiz}
+                  variant="outline"
+                  className="flex items-center gap-2"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Try Again
+                </Button>
+
+                <Button
+                  onClick={() => {
+                    setQuizMode(false);
+                    setShowResults(false);
+                  }}
+                  className="flex items-center gap-2"
+                >
+                  <Book className="h-4 w-4" />
+                  Study Mode
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="p-6 flex flex-col h-full">
+            <div className="flex flex-wrap justify-between items-center mb-6">
+              <h2 className="text-xl font-bold">{topic} Flashcards</h2>
+
+              <div className="flex flex-wrap gap-2">
+                {!quizMode ? (
+                  <>
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={downloadAsPDF}
-                      className="flex items-center gap-2"
+                      className="gap-1 hidden sm:flex"
                     >
                       <Download className="h-4 w-4" />
-                      Download PDF
+                      PDF
                     </Button>
+
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={shareFlashcards}
-                      className="flex items-center gap-2"
+                      className="gap-1 hidden sm:flex"
                     >
-                      <Share2 className="h-4 w-4" />
-                      Share
+                      {copiedText ? (
+                        <Check className="h-4 w-4 text-green-500" />
+                      ) : (
+                        <Share2 className="h-4 w-4" />
+                      )}
+                      {copiedText ? "Copied!" : "Copy All"}
+                    </Button>
+
+                    <Button onClick={startQuizMode} size="sm" className="gap-1">
+                      <BrainCircuit className="h-4 w-4" />
+                      Quiz Mode
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    onClick={() => {
+                      setQuizMode(false);
+                      setAnsweredCards([]);
+                    }}
+                    size="sm"
+                    variant="outline"
+                  >
+                    Exit Quiz Mode
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex-1 flex flex-col">
+              {!quizMode ? (
+                // Study mode - existing card display
+                <>
+                  <div className="flex-1 flex items-center justify-center mb-4">
+                    <div className="w-full max-w-2xl">
+                      <div
+                        className="relative w-full"
+                        style={{ perspective: "1000px" }}
+                      >
+                        <AnimatePresence mode="wait">
+                          <motion.div
+                            key={`card-${currentCardIndex}-${
+                              isFlipped ? "back" : "front"
+                            }`}
+                            initial={{
+                              rotateY: isFlipped ? -90 : 90,
+                              opacity: 0,
+                            }}
+                            animate={{ rotateY: 0, opacity: 1 }}
+                            exit={{ rotateY: isFlipped ? 90 : -90, opacity: 0 }}
+                            transition={{ duration: 0.4, ease: "easeOut" }}
+                            className="w-full"
+                            style={{
+                              transformStyle: "preserve-3d",
+                            }}
+                          >
+                            <Card
+                              className="w-full h-64 sm:h-80 p-6 flex flex-col shadow-md cursor-pointer"
+                              onClick={() => setIsFlipped(!isFlipped)}
+                            >
+                              <div className="flex justify-between items-start">
+                                <div className="text-xs font-medium text-gray-500 mb-4">
+                                  Card {currentCardIndex + 1} of{" "}
+                                  {flashcards.length}
+                                </div>
+
+                                <div className="text-xs font-medium text-primary px-2 py-1 rounded-full bg-primary/5">
+                                  {isFlipped ? "Answer" : "Question"}
+                                </div>
+                              </div>
+
+                              <div className="flex-1 flex items-center justify-center">
+                                {!isFlipped ? (
+                                  // Question side
+                                  <div className="text-center">
+                                    <h3 className="text-xl font-semibold mb-4">
+                                      {flashcards[currentCardIndex]?.question}
+                                    </h3>
+                                    <p className="text-sm text-gray-500 italic mt-4">
+                                      Click to see answer
+                                    </p>
+                                  </div>
+                                ) : (
+                                  // Answer side
+                                  <div className="w-full">
+                                    <div className="text-center mb-2">
+                                      <div className="inline-flex items-center justify-center px-2 py-1 rounded-full bg-primary/10 mb-3">
+                                        <BookOpen className="h-3 w-3 mr-1 text-primary" />
+                                        <span className="text-xs font-medium text-primary">
+                                          Answer
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <div className="bg-primary/5 rounded-lg p-4 border border-primary/10 shadow-sm">
+                                      <div className="text-center">
+                                        <p className="text-lg font-medium text-primary">
+                                          {formatAnswer(
+                                            flashcards[currentCardIndex]?.answer
+                                          )}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <div className="text-center mt-3">
+                                      <p className="text-xs text-gray-500">
+                                        Click to see question
+                                      </p>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </Card>
+                          </motion.div>
+                        </AnimatePresence>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between">
+                    <Button
+                      variant="outline"
+                      onClick={prevCard}
+                      disabled={currentCardIndex === 0}
+                      className="gap-1"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Previous
+                    </Button>
+
+                    <div className="text-sm text-gray-500">
+                      {currentCardIndex + 1} of {flashcards.length}
+                    </div>
+
+                    <Button
+                      variant="outline"
+                      onClick={nextCard}
+                      disabled={currentCardIndex === flashcards.length - 1}
+                      className="gap-1"
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4" />
                     </Button>
                   </div>
-                </div>
+                </>
               ) : (
-                <div className="space-y-4">
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-sm">
-                      <span>Progress</span>
-                      <span>
-                        {answeredCards.filter(Boolean).length} of{" "}
-                        {flashcards.length}
-                      </span>
-                    </div>
-                    <Progress
-                      value={
-                        (answeredCards.filter(Boolean).length /
-                          flashcards.length) *
-                        100
-                      }
-                    />
-                  </div>
+                // Quiz mode - multiple choice questions
+                <>
+                  <div className="flex-1 mb-4">
+                    <Card className="max-w-2xl mx-auto p-6">
+                      <div className="text-xs text-gray-500 mb-4">
+                        Question {currentCardIndex + 1} of{" "}
+                        {quizQuestions.length}
+                      </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-center">
-                    <div className="bg-blue-50 p-2 rounded-md">
-                      <p className="text-xs text-gray-500">Current Streak</p>
-                      <p className="text-lg font-bold text-blue-600">
-                        {currentStreak}
-                      </p>
-                    </div>
-                    <div className="bg-amber-50 p-2 rounded-md">
-                      <p className="text-xs text-gray-500">Best Streak</p>
-                      <p className="text-lg font-bold text-amber-600">
-                        {bestStreak}
-                      </p>
-                    </div>
-                  </div>
+                      <div className="mb-4">
+                        <Badge variant="outline" className="mb-2">
+                          {quizQuestions[currentCardIndex]?.type ===
+                          "multiple-choice"
+                            ? "Multiple Choice"
+                            : quizQuestions[currentCardIndex]?.type ===
+                              "true-false"
+                            ? "True or False"
+                            : "Single Choice"}
+                        </Badge>
+                        <h3 className="text-lg font-medium">
+                          {quizQuestions[currentCardIndex]?.question}
+                        </h3>
+                      </div>
 
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={resetQuiz}
-                    className="w-full"
-                  >
-                    Cancel Quiz
-                  </Button>
-                </div>
-              )}
-            </motion.div>
-          )}
-        </div>
-
-        {/* Right panel - Flashcards */}
-        <div className="lg:w-2/3">
-          {flashcards.length > 0 ? (
-            <div className="space-y-6">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="h-[400px] relative">
-                  <div
-                    className={`w-full h-full cursor-pointer ${
-                      quizMode && answeredCards[currentCard]
-                        ? "pointer-events-none"
-                        : ""
-                    }`}
-                    onClick={() => !quizMode && setFlipped(!flipped)}
-                  >
-                    <AnimatePresence initial={false} mode="wait">
-                      <motion.div
-                        key={flipped ? "back" : "front"}
-                        initial={{ rotateY: flipped ? -90 : 90, opacity: 0 }}
-                        animate={{ rotateY: 0, opacity: 1 }}
-                        exit={{ rotateY: flipped ? 90 : -90, opacity: 0 }}
-                        transition={{ duration: 0.3 }}
-                        className="absolute inset-0 flex items-center justify-center p-8 bg-gradient-to-br from-blue-50 to-purple-50 rounded-t-xl"
-                      >
-                        <div className="text-center">
-                          <div className="mb-4 flex justify-center">
-                            {!quizMode ? (
-                              <Badge
-                                variant={flipped ? "secondary" : "default"}
-                                className="px-3 py-1 rounded-full"
-                              >
-                                {flipped ? "Answer" : "Question"}
-                              </Badge>
-                            ) : (
-                              <Badge
-                                variant="default"
-                                className="px-3 py-1 rounded-full"
-                              >
-                                {answeredCards[currentCard]
-                                  ? userKnows
-                                    ? "You knew this! ✓"
-                                    : "Keep studying this one ✗"
-                                  : "Question"}
-                              </Badge>
-                            )}
-                          </div>
-                          <h2 className="text-2xl font-semibold mb-3">
-                            {!quizMode || !flipped
-                              ? `Question ${currentCard + 1}`
-                              : "Answer"}
-                          </h2>
-                          <p className="text-lg leading-relaxed">
-                            {!quizMode || !flipped
-                              ? flashcards[currentCard].question
-                              : flashcards[currentCard].answer}
-                          </p>
-
-                          {quizMode && !answeredCards[currentCard] && (
-                            <div className="mt-4">
-                              <p className="text-sm text-gray-600 mb-2">
-                                Do you know this?
-                              </p>
-                              <div className="flex justify-center gap-3">
-                                <Button
-                                  size="sm"
-                                  variant="default"
-                                  className="bg-green-600 hover:bg-green-700"
-                                  onClick={() => handleQuizAnswer(true)}
-                                >
-                                  I Know This
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="default"
-                                  className="bg-rose-600 hover:bg-rose-700"
-                                  onClick={() => handleQuizAnswer(false)}
-                                >
-                                  Still Learning
-                                </Button>
+                      <div className="space-y-3">
+                        {quizQuestions[currentCardIndex]?.options.map(
+                          (option, index) => (
+                            <div
+                              key={index}
+                              className={`p-3 border rounded-lg cursor-pointer hover:bg-white transition-colors ${
+                                answered
+                                  ? option ===
+                                    quizQuestions[currentCardIndex]
+                                      ?.correctAnswer
+                                    ? "border-green-500 bg-green-50"
+                                    : selectedAnswer === option
+                                    ? "border-red-500 bg-red-50"
+                                    : "border-gray-200"
+                                  : selectedAnswer === option
+                                  ? "border-primary"
+                                  : "border-gray-200"
+                              }`}
+                              onClick={() => {
+                                if (!answered) handleAnswerSelect(option);
+                              }}
+                            >
+                              <div className="flex items-start">
+                                <div className="flex-shrink-0 w-5 h-5 mt-0.5">
+                                  {answered ? (
+                                    option ===
+                                    quizQuestions[currentCardIndex]
+                                      ?.correctAnswer ? (
+                                      <CheckCircle className="h-5 w-5 text-green-500" />
+                                    ) : selectedAnswer === option ? (
+                                      <XCircle className="h-5 w-5 text-red-500" />
+                                    ) : (
+                                      <Circle className="h-5 w-5 text-gray-300" />
+                                    )
+                                  ) : selectedAnswer === option ? (
+                                    <Check className="h-5 w-5 text-primary" />
+                                  ) : (
+                                    <Circle className="h-5 w-5 text-gray-300" />
+                                  )}
+                                </div>
+                                <div className="ml-3 text-sm">{option}</div>
                               </div>
                             </div>
-                          )}
+                          )
+                        )}
+                      </div>
 
-                          {!quizMode && (
-                            <div className="mt-8 text-sm text-gray-500">
-                              {flipped
-                                ? "Click to see question"
-                                : "Click to see answer"}
-                            </div>
-                          )}
-
-                          {quizMode && answeredCards[currentCard] && (
-                            <motion.div
-                              initial={{ opacity: 0, scale: 0.8 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              transition={{ duration: 0.3 }}
-                              className="mt-4"
-                            >
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => setFlipped(!flipped)}
-                              >
-                                {flipped ? "View Question" : "View Answer"}
-                              </Button>
-                            </motion.div>
-                          )}
+                      {answered && (
+                        <div className="mt-4 p-3 bg-primary/5 border border-primary/10 rounded-lg">
+                          <div className="text-sm font-medium mb-1 text-primary">
+                            {selectedAnswer ===
+                            quizQuestions[currentCardIndex]?.correctAnswer
+                              ? "Correct!"
+                              : "Incorrect"}
+                          </div>
+                          <div className="text-sm text-center">
+                            <span className="font-medium">Answer: </span>
+                            {formatAnswer(
+                              quizQuestions[currentCardIndex]?.explanation
+                            )}
+                          </div>
                         </div>
-                      </motion.div>
-                    </AnimatePresence>
-                  </div>
-                </div>
-
-                <div className="p-4 border-t border-gray-100 bg-white">
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm text-gray-500">
-                      Card {currentCard + 1} of {flashcards.length}
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={prevCard}
-                        disabled={
-                          currentCard === 0 ||
-                          (quizMode && !answeredCards[currentCard])
-                        }
-                      >
-                        Previous
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={nextCard}
-                        disabled={
-                          currentCard === flashcards.length - 1 ||
-                          (quizMode && !answeredCards[currentCard])
-                        }
-                      >
-                        Next
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-5 gap-4">
-                {flashcards.map((_, index) => (
-                  <motion.div
-                    key={index}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                  >
-                    <Button
-                      variant={currentCard === index ? "default" : "outline"}
-                      className={`w-full h-10 ${
-                        quizMode && answeredCards[index] ? "bg-opacity-50" : ""
-                      }`}
-                      onClick={() => {
-                        if (!quizMode || answeredCards[index]) {
-                          setCurrentCard(index);
-                          setFlipped(false);
-                        }
-                      }}
-                    >
-                      {index + 1}
-                      {quizMode && answeredCards[index] && (
-                        <span className="ml-1 text-xs">✓</span>
                       )}
-                    </Button>
-                  </motion.div>
-                ))}
-              </div>
+                    </Card>
+
+                    <div className="flex justify-end mt-4">
+                      {answered ? (
+                        <Button onClick={nextQuestion}>
+                          {currentCardIndex === quizQuestions.length - 1
+                            ? "See Results"
+                            : "Next Question"}
+                          <ChevronRight className="ml-2 h-4 w-4" />
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          onClick={() => handleAnswerSelect(null)}
+                        >
+                          Skip Question
+                          <ChevronRight className="ml-2 h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
-          ) : (
-            <div className="h-[400px] flex items-center justify-center bg-white rounded-xl shadow-sm border border-gray-100 p-8">
-              <div className="text-center">
-                <div className="w-24 h-24 mx-auto mb-4 flex items-center justify-center rounded-full bg-gray-100">
-                  <LibraryIcon className="h-12 w-12 text-gray-400" />
-                </div>
-                <h3 className="text-xl font-semibold mb-2">
-                  No Flashcards Yet
-                </h3>
-                <p className="text-gray-500 mb-6">
-                  Select a topic and generate flashcards to start studying.
-                </p>
-                <p className="text-sm text-gray-400">
-                  Generated flashcards will appear here
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Quiz Results Dialog */}
-      <Dialog open={showQuizResult} onOpenChange={setShowQuizResult}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-center flex items-center justify-center gap-2">
-              <Trophy
-                className={`h-5 w-5 ${
-                  quizScore / flashcards.length >= 0.8
-                    ? "text-yellow-500"
-                    : "text-blue-500"
-                }`}
-              />
-              Quiz Results
-            </DialogTitle>
-            <DialogDescription className="text-center">
-              You've completed the flashcard quiz!
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="py-6">
-            <div className="text-center mb-6">
-              <motion.div
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ type: "spring", stiffness: 300, damping: 15 }}
-                className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-gradient-to-br from-blue-100 to-purple-100 border-4 border-white shadow-lg mb-4"
-              >
-                <span className="text-3xl font-bold">
-                  {Math.round((quizScore / flashcards.length) * 100)}%
-                </span>
-              </motion.div>
-
-              <h3 className="text-xl font-semibold mb-1">
-                {quizScore} of {flashcards.length} correct
-              </h3>
-
-              <p className="text-gray-500 mb-4">
-                {quizScore / flashcards.length >= 0.8
-                  ? "Excellent work! You've mastered this topic!"
-                  : quizScore / flashcards.length >= 0.6
-                  ? "Good job! You're on the right track!"
-                  : "Keep practicing! You'll improve with more study."}
-              </p>
-
-              <div className="flex justify-center gap-2 mb-2">
-                <div className="bg-blue-50 px-3 py-2 rounded-lg">
-                  <p className="text-xs text-gray-500">Best Streak</p>
-                  <p className="text-lg font-bold text-blue-600">
-                    {bestStreak}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {quizScore / flashcards.length >= 0.8 && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-                className="bg-amber-50 rounded-lg p-4 text-center mb-4"
-              >
-                <div className="flex justify-center mb-2">
-                  <Sparkles className="h-6 w-6 text-amber-500" />
-                </div>
-                <h4 className="font-medium text-amber-800 mb-1">
-                  Achievement Unlocked!
-                </h4>
-                <p className="text-sm text-amber-700">
-                  {topic === "custom" ? customTopic : topic} Master
-                </p>
-              </motion.div>
-            )}
           </div>
-
-          <DialogFooter className="flex flex-col sm:flex-row gap-2">
-            <Button variant="outline" onClick={resetQuiz} className="sm:flex-1">
-              Study Again
-            </Button>
-            <Button
-              onClick={() => {
-                setShowQuizResult(false);
-                handleGenerate();
-              }}
-              className="sm:flex-1"
-            >
-              <ArrowRight className="mr-2 h-4 w-4" />
-              New Topic
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        )}
+      </div>
     </div>
   );
 }
